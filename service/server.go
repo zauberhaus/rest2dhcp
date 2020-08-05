@@ -42,6 +42,8 @@ var (
 		fmt.Sprintf("/{hostname}"),
 		fmt.Sprintf("/{hostname}/%s", macExp),
 	}
+
+	ServiceVersion *VersionInfo
 )
 
 type Server struct {
@@ -135,6 +137,11 @@ func (s *Server) Start(ctx context.Context) {
 }
 
 func (s *Server) setup(router *mux.Router) {
+	router.
+		Methods("GET").
+		Path("/version").
+		HandlerFunc(s.version)
+
 	for _, p := range renewPath {
 		router.
 			Methods("GET").
@@ -155,6 +162,11 @@ func (s *Server) setup(router *mux.Router) {
 			Path(p).
 			HandlerFunc(s.get)
 	}
+}
+
+func (s *Server) version(w http.ResponseWriter, r *http.Request) {
+	contentType := r.Context().Value(Content).(ContentType)
+	s.write(w, ServiceVersion, contentType)
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +288,7 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) 
 			return err
 		}
 
-		w.Header().Set("Content-Type", "text/yaml")
+		w.Header().Set("Content-Type", "application/yaml")
 		_, err = w.Write(data)
 		return err
 	}

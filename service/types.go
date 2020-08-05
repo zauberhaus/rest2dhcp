@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -87,7 +88,7 @@ type MAC struct {
 	net.HardwareAddr
 }
 
-func (m MAC) Unmarshal(value *yaml.Node) error {
+func (m *MAC) UnmarshalYAML(value *yaml.Node) error {
 	mac, err := net.ParseMAC(value.Value)
 	if err == nil {
 		m.HardwareAddr = mac
@@ -96,9 +97,27 @@ func (m MAC) Unmarshal(value *yaml.Node) error {
 	return err
 }
 
-func (m MAC) UnmarshalJSON(b []byte) error {
+func (m *MAC) UnmarshalJSON(b []byte) error {
 	var txt string
-	json.Unmarshal(b, &txt)
+	err := json.Unmarshal(b, &txt)
+
+	if err != nil {
+		return err
+	}
+
+	mac, err := net.ParseMAC(txt)
+	if err == nil {
+		m.HardwareAddr = mac
+	}
+
+	return err
+}
+
+func (m *MAC) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var txt string
+	if err := d.DecodeElement(&txt, &start); err != nil {
+		return err
+	}
 
 	mac, err := net.ParseMAC(txt)
 	if err == nil {
@@ -118,4 +137,33 @@ func (m MAC) MarshalJSON() ([]byte, error) {
 
 func (m MAC) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(m.String(), start)
+}
+
+type VersionInfo struct {
+	XMLName        xml.Name `xml:"version" json:"-" yaml:"-"`
+	ServiceVersion Version  `yaml:"rest2dhcp" xml:"rest2dhcp" json:"rest2dhcp"`
+}
+
+type Version struct {
+	BuildDate    string `yaml:"buildDate" json:"buildDate" xml:"build-date"`
+	Compiler     string `yaml:"compiler" json:"compiler" xml:"compiler"`
+	GitCommit    string `yaml:"gitCommit" json:"gitCommit" xml:"git-commit"`
+	GitTreeState string `yaml:"gitTreeState" json:"gitTreeState" xml:"git-tree-state"`
+	GitVersion   string `yaml:"gitVersion" json:"gitVersion" xml:"git-version"`
+	GoVersion    string `yaml:"goVersion" json:"goVersion" xml:"go-version"`
+	Platform     string `yaml:"platform" json:"platform" xml:"platform"`
+}
+
+func NewVersionInfo(buildDate string, gitCommit string, tag string, treeState string) *VersionInfo {
+	return &VersionInfo{
+		ServiceVersion: Version{
+			BuildDate:    buildDate,
+			Compiler:     runtime.Compiler,
+			GitCommit:    gitCommit,
+			GitTreeState: treeState,
+			GitVersion:   tag,
+			GoVersion:    runtime.Version(),
+			Platform:     fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH),
+		},
+	}
 }

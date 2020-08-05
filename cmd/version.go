@@ -1,5 +1,5 @@
 /*
-Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+Copyright © 2020 NAME HERE <EMAIL ADDRESS>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,24 +13,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-package main
+package cmd
 
 import (
-	"github.com/zauberhaus/rest2dhcp/cmd"
+	"fmt"
+	"log"
+
+	"github.com/spf13/cobra"
 	"github.com/zauberhaus/rest2dhcp/service"
+	"gopkg.in/yaml.v3"
 )
 
-var (
-	tag       string // git tag used to build the program
-	gitCommit string // sha1 revision used to build the program
-	buildTime string // when the executable was built
-	treeState string // git tree state
-)
+// versionCmd represents the version command
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Show the version info",
+	Run: func(cmd *cobra.Command, args []string) {
 
-func main() {
-	version := service.NewVersionInfo(buildTime, gitCommit, tag, treeState)
-	service.ServiceVersion = version
+		version := service.ServiceVersion
+		data, err := yaml.Marshal(version)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	cmd.Execute()
+		fmt.Println(string(data))
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(versionCmd)
 }
