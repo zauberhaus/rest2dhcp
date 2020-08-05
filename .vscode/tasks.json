@@ -1,0 +1,21 @@
+{
+	"version": "2.0.0",
+	"tasks": [{
+		"label": "startDelve",
+		"command": "cd ${workspaceFolder}; sudo -E ~/go/bin/dlv debug --api-version=2 --headless --listen=:2345 --log -- ",
+		"type": "shell",
+		"isBackground": true,
+		"problemMatcher": {
+			"pattern": {
+				"regexp": "Error: ([^(]+)\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\): (.*)$",
+				"file": 1,
+				"location": 2,
+				"message": 3
+			},
+			"background": {
+				"beginsPattern": "API server listening",
+				"endsPattern": "20"
+			}
+		}
+	}]    
+}
