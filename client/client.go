@@ -85,7 +85,10 @@ func NewClient(local net.IP, remote net.IP, connType ConnectionType) *Client {
 			log.Fatalln("Can't detect gatway ip")
 		}
 
-		local = src
+		if local == nil {
+			local = src
+		}
+
 		remote = gateway
 
 		if connType == AutoDetect {
@@ -99,8 +102,6 @@ func NewClient(local net.IP, remote net.IP, connType ConnectionType) *Client {
 			local = ip
 		}
 	}
-
-	log.Printf("Use connection %v", connType)
 
 	switch connType {
 	case DefaultRelay:
@@ -127,7 +128,11 @@ func NewClient(local net.IP, remote net.IP, connType ConnectionType) *Client {
 			IP:   remote,
 			Port: 67,
 		})
+	default:
+		log.Fatalf("Unkown connection type: %v", connType)
 	}
+
+	log.Printf("Use %v connection", connType)
 
 	return &client
 }

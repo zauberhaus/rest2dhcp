@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [{
 		"label": "startDelve",
-		"command": "cd ${workspaceFolder}; sudo -E ~/go/bin/dlv debug --api-version=2 --headless --listen=:2345 --log -- ",
+		"command": "cd ${workspaceFolder}; sudo -E ~/go/bin/dlv debug --api-version=2 --headless --listen=:2345 --log -- -c 192.168.1.5",
 		"type": "shell",
 		"isBackground": true,
 		"problemMatcher": {

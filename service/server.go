@@ -6,14 +6,18 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/spf13/cobra"
 	cl "github.com/zauberhaus/rest2dhcp/client"
 	"gopkg.in/yaml.v3"
 )
@@ -42,16 +46,18 @@ var (
 
 type Server struct {
 	http.Server
-	client *cl.Client
-	Done   chan bool
+	client  *cl.Client
+	timeout time.Duration
+	Done    chan bool
 }
 
-func NewServer(addr string) *Server {
+func NewServer(local net.IP, remote net.IP, mode cl.ConnectionType, addr string, timeout time.Duration) *Server {
 	server := Server{}
 	server.Addr = addr
 	server.Done = make(chan bool)
+	server.timeout = timeout
 
-	server.client = cl.NewClient(nil, nil, cl.AutoDetect)
+	server.client = cl.NewClient(local, remote, mode)
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
@@ -60,6 +66,48 @@ func NewServer(addr string) *Server {
 	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
 
 	return &server
+}
+
+func RunServer(cmd *cobra.Command, args []string) {
+
+	remote, _ := cmd.Flags().GetIP("server")
+	local, _ := cmd.Flags().GetIP("client")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	listen, _ := cmd.Flags().GetString("listen")
+
+	mode := cl.DefaultRelay
+
+	modetxt, _ := cmd.Flags().GetString("mode")
+	switch modetxt {
+	case "auto":
+		mode = cl.AutoDetect
+	case "relay":
+		mode = cl.DefaultRelay
+	case "fritzbox":
+		mode = cl.Fritzbox
+	case "android":
+		mode = cl.BrokenRelay
+	default:
+		fmt.Printf("Unknown DHCP mode: %s", modetxt)
+		cmd.Usage()
+		os.Exit(1)
+	}
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	server := NewServer(local, remote, mode, listen, timeout)
+	server.Start(ctx)
+
+	signal := <-done
+	log.Printf("Got %v", signal.String())
+
+	cancel()
+
+	<-server.Done
+	log.Printf("Done.")
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -116,7 +164,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	lease := <-s.client.GetLease(ctx, query.Hostname, query.Mac.HardwareAddr)
@@ -151,7 +199,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	lease := <-s.client.ReNew(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
@@ -186,7 +234,7 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	lease := <-s.client.Release(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
@@ -196,7 +244,7 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("Ok."))
+	w.Write([]byte("Ok.\n"))
 }
 
 func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) error {
