@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/routing"
+	"github.com/zauberhaus/rest2dhcp/routing"
 )
 
 type Connection interface {
@@ -54,6 +54,8 @@ type Client struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	Done chan bool
 }
 
 var (
@@ -69,6 +71,8 @@ func NewClient(local net.IP, remote net.IP, connType ConnectionType) *Client {
 		retry:   15 * time.Second,
 		ctx:     ctx,
 		cancel:  cancel,
+
+		Done: make(chan bool),
 	}
 
 	if remote == nil {
@@ -138,7 +142,8 @@ func (c *Client) Start() {
 			case err := <-c2:
 				log.Println(err)
 			case <-c.ctx.Done():
-				log.Println("Stopped")
+				log.Println("DHCP client stopped")
+				close(c.Done)
 				return
 			case dhcp := <-c3:
 				if dhcp != nil {
@@ -175,6 +180,7 @@ func (c *Client) Start() {
 
 func (c *Client) Stop() error {
 	c.cancel()
+	<-c.Done
 	return c.conn.Close()
 }
 
