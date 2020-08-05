@@ -24,6 +24,15 @@ var (
 	xmlMime  MimeType = "application/xml"
 )
 
+func check() bool {
+	_, err := http.Get("http://localhost:8080/version")
+	if err != nil {
+		return true
+	}
+
+	return false
+}
+
 func setup() (*service.Server, context.CancelFunc) {
 	server := service.NewServer(nil, nil, client.AutoDetect, ":8080", 30*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -32,7 +41,7 @@ func setup() (*service.Server, context.CancelFunc) {
 }
 
 func TestMain(m *testing.M) {
-	start := len(os.Getenv("SERVER")) > 0
+	start := check()
 
 	if start {
 		server, cancel := setup()
@@ -45,110 +54,6 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 }
-
-/*
-func TestLeaseHostname(t *testing.T) {
-	hostname := "test"
-
-	req, err := http.NewRequest("GET", "http://localhost:8080/"+hostname, nil)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	ctype := "application/json"
-
-	req.Header.Set("Accept", ctype)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	defer resp.Body.Close()
-
-	result := checkResult(t, resp, hostname, ctype)
-
-	req, err = http.NewRequest("GET", "http://localhost:8080/"+hostname+"/"+result.Mac.String()+"/"+result.IP, nil)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	req.Header.Set("Accept", ctype)
-
-	resp2, err := client.Do(req)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	defer resp2.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Wrong http status: %v", resp.Status)
-		return
-	}
-
-	value = resp.Header.Get("Content-Type")
-	if value != ctype {
-		t.Errorf("Wrong content type: %v != %v", value, ctype)
-		return
-	}
-
-	data, err = ioutil.ReadAll(resp2.Body)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	if result.Hostname != hostname {
-		t.Errorf("Wrong hostname: '%v' != '%v'", result.Hostname, hostname)
-		return
-	}
-
-	ip = net.ParseIP(result.IP)
-	if ip == nil {
-		t.Errorf("Invalid return ip")
-		return
-	}
-
-	if result.Mac.HardwareAddr == nil {
-		t.Errorf("Empty mac")
-		return
-	}
-
-	req, err = http.NewRequest("DELETE", "http://localhost:8080/"+hostname+"/"+result.Mac.String()+"/"+ip.String(), nil)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	req.Header.Set("Accept", ctype)
-
-	resp3, err := client.Do(req)
-	if err != nil {
-		t.Errorf("%v", err)
-		return
-	}
-
-	defer resp3.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Wrong http status: %v", resp.Status)
-		return
-	}
-
-}
-*/
 
 func TestService(t *testing.T) {
 	t.Run("TestWorkflowYAML", DHCPWorkflow(yamlMime))
