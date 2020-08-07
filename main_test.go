@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -16,18 +17,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type MimeType string
-
 var (
-	yamlMime MimeType = "application/yaml"
-	jsonMime MimeType = "application/json"
-	xmlMime  MimeType = "application/xml"
+	url        = "http://localhost:8080/ip/"
+	versionURL = "http://localhost:8080/version"
+	metricsURL = "http://localhost:8080/metrics"
 )
 
 func check() bool {
-	_, err := http.Get("http://localhost:8080/version")
+	resp, err := http.Get(versionURL)
 	if err != nil {
 		return true
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Can't read version: %s (%v)", resp.Status, resp.StatusCode)
+		os.Exit(1)
 	}
 
 	return false
@@ -56,31 +60,39 @@ func TestMain(m *testing.M) {
 }
 
 func TestService(t *testing.T) {
-	t.Run("TestWorkflowYAML", DHCPWorkflow(yamlMime))
-	t.Run("TestWorkflowJSON", DHCPWorkflow(jsonMime))
-	t.Run("TestWorkflowXML", DHCPWorkflow(xmlMime))
+	t.Run("TestWorkflowYAML", DHCPWorkflow(service.YAML))
+	t.Run("TestWorkflowJSON", DHCPWorkflow(service.JSON))
+	t.Run("TestWorkflowXML", DHCPWorkflow(service.XML))
 }
 
-func DHCPWorkflow(mime MimeType) func(t *testing.T) {
+func TestVersion(t *testing.T) {
+	t.Run("TestVersionYAML", Version(service.YAML))
+	t.Run("TestVersionJSON", Version(service.JSON))
+	t.Run("TestVersionXML", Version(service.XML))
+}
+
+func TestMetrics(t *testing.T) {
+}
+
+func DHCPWorkflow(mime service.ContentType) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		hostname := "test"
 
-		mime := yamlMime
-		resp := request(t, "GET", "http://localhost:8080/"+hostname, mime)
+		resp := request(t, "GET", url+hostname, mime)
 		result := checkResult(t, resp, hostname, mime)
 
-		resp2 := request(t, "GET", "http://localhost:8080/"+hostname+"/"+result.Mac.String(), mime)
+		resp2 := request(t, "GET", url+hostname+"/"+result.Mac.String(), mime)
 		result2 := checkResult(t, resp2, hostname, mime)
 
 		if result.IP != result2.IP {
 			t.Fatalf("Different IP's %v != %v", result.IP, result2.IP)
 		}
 
-		resp = request(t, "GET", "http://localhost:8080/"+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
+		resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
 		result = checkResult(t, resp, hostname, mime)
 
-		resp = request(t, "DELETE", "http://localhost:8080/"+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
+		resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("Wrong http status: %v", resp.Status)
@@ -88,7 +100,35 @@ func DHCPWorkflow(mime MimeType) func(t *testing.T) {
 	}
 }
 
-func request(t *testing.T, method string, url string, mime MimeType) *http.Response {
+func Version(mime service.ContentType) func(t *testing.T) {
+	return func(t *testing.T) {
+		resp := request(t, "GET", versionURL, mime)
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("Wrong http status: %v", resp.Status)
+		}
+
+		value := resp.Header.Get("Content-Type")
+		if service.ContentType(value) != mime {
+			t.Fatalf("Wrong content type: %v != %v", value, mime)
+		}
+
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		var version service.VersionInfo
+		unmarshal(t, data, &version, mime)
+
+		if version.ServiceVersion.GitCommit == "" {
+			t.Errorf("Invalid GitCommit")
+		}
+
+	}
+}
+
+func request(t *testing.T, method string, url string, mime service.ContentType) *http.Response {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -105,13 +145,13 @@ func request(t *testing.T, method string, url string, mime MimeType) *http.Respo
 	return resp
 }
 
-func checkResult(t *testing.T, resp *http.Response, hostname string, mime MimeType) *service.Result {
+func checkResult(t *testing.T, resp *http.Response, hostname string, mime service.ContentType) *service.Result {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Wrong http status: %v", resp.Status)
 	}
 
 	value := resp.Header.Get("Content-Type")
-	if MimeType(value) != mime {
+	if service.ContentType(value) != mime {
 		t.Fatalf("Wrong content type: %v != %v", value, mime)
 	}
 
@@ -120,7 +160,8 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime MimeTy
 		t.Fatalf("%v", err)
 	}
 
-	result := unmarshal(t, data, mime)
+	var result service.Result
+	unmarshal(t, data, &result, mime)
 
 	if result.Hostname != hostname {
 		t.Fatalf("Wrong hostname: '%v' != '%v'", result.Hostname, hostname)
@@ -136,31 +177,28 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime MimeTy
 	}
 
 	resp.Body.Close()
-	return result
+	return &result
 }
 
-func unmarshal(t *testing.T, data []byte, mime MimeType) *service.Result {
-	var result service.Result
+func unmarshal(t *testing.T, data []byte, result interface{}, mime service.ContentType) {
 	switch mime {
-	case yamlMime:
-		err := yaml.Unmarshal(data, &result)
+	case service.YAML:
+		err := yaml.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)
-			return nil
+			return
 		}
-	case jsonMime:
-		err := json.Unmarshal(data, &result)
+	case service.JSON:
+		err := json.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)
-			return nil
+			return
 		}
-	case xmlMime:
-		err := xml.Unmarshal(data, &result)
+	case service.XML:
+		err := xml.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)
-			return nil
+			return
 		}
 	}
-
-	return &result
 }

@@ -17,6 +17,9 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	cl "github.com/zauberhaus/rest2dhcp/client"
 	"gopkg.in/yaml.v3"
@@ -30,18 +33,28 @@ var (
 
 	hostnameExp = regexp.MustCompile("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$")
 
-	renewPath = []string{
-		fmt.Sprintf("/{hostname}/%s/%s", macExp, ipExp),
+	renewPath = map[string]string{
+		"renew": fmt.Sprintf("/ip/{hostname}/%s/%s", macExp, ipExp),
 	}
 
-	releasePath = []string{
-		fmt.Sprintf("/{hostname}/%s/%s", macExp, ipExp),
+	releasePath = map[string]string{
+		"release": fmt.Sprintf("/ip/{hostname}/%s/%s", macExp, ipExp),
 	}
 
-	leasePath = []string{
-		fmt.Sprintf("/{hostname}"),
-		fmt.Sprintf("/{hostname}/%s", macExp),
+	leasePath = map[string]string{
+		"get":        fmt.Sprintf("/ip/{hostname}"),
+		"getWithMac": fmt.Sprintf("/ip/{hostname}/%s", macExp),
 	}
+
+	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "rest2dhcp_http_duration_seconds",
+		Help: "Duration of HTTP requests.",
+	}, []string{"action"})
+
+	httpCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "rest2dhcp_http_counter",
+		Help: "Counter for HTTP requests",
+	}, []string{"code"})
 
 	ServiceVersion *VersionInfo
 )
@@ -63,6 +76,8 @@ func NewServer(local net.IP, remote net.IP, mode cl.ConnectionType, addr string,
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
+	router.Use(server.CounterMiddleware)
+	router.Use(server.PrometheusMiddleware)
 	server.setup(router)
 
 	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
@@ -138,34 +153,45 @@ func (s *Server) Start(ctx context.Context) {
 
 func (s *Server) setup(router *mux.Router) {
 	router.
+		Name("version").
 		Methods("GET").
 		Path("/version").
 		HandlerFunc(s.version)
 
-	for _, p := range renewPath {
+	router.
+		Name("/metrics").
+		Methods("GET").
+		Path("/metrics").
+		Handler(promhttp.Handler())
+
+	for k, p := range renewPath {
 		router.
+			Name(k).
 			Methods("GET").
 			Path(p).
 			HandlerFunc(s.renew)
 	}
 
-	for _, p := range releasePath {
+	for k, p := range releasePath {
 		router.
+			Name(k).
 			Methods("DELETE").
 			Path(p).
 			HandlerFunc(s.release)
 	}
 
-	for _, p := range leasePath {
+	for k, p := range leasePath {
 		router.
+			Name(k).
 			Methods("GET").
 			Path(p).
 			HandlerFunc(s.get)
 	}
+
 }
 
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {
-	contentType := r.Context().Value(Content).(ContentType)
+	contentType := ContentType(r.Context().Value(Content).(string))
 	s.write(w, ServiceVersion, contentType)
 }
 
@@ -201,7 +227,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	contentType := r.Context().Value(Content).(ContentType)
+	contentType := ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
 
@@ -236,7 +262,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	contentType := r.Context().Value(Content).(ContentType)
+	contentType := ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
 
@@ -269,7 +295,7 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) 
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", JSON)
 		_, err = w.Write(data)
 		return err
 	case XML:
@@ -279,7 +305,7 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) 
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", "application/xml")
+		w.Header().Set("Content-Type", XML)
 		_, err = w.Write(data)
 		return err
 	case YAML:
@@ -288,7 +314,7 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) 
 			return err
 		}
 
-		w.Header().Set("Content-Type", "application/yaml")
+		w.Header().Set("Content-Type", YAML)
 		_, err = w.Write(data)
 		return err
 	}
@@ -300,19 +326,35 @@ func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		content := r.Header.Get("Accept")
 
-		if strings.Contains(content, "application/json") {
+		if strings.Contains(content, JSON) {
 			ctx := context.WithValue(r.Context(), Content, JSON)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, "application/yaml") {
+		} else if strings.Contains(content, YAML) {
 			ctx := context.WithValue(r.Context(), Content, YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, "application/xml") {
+		} else if strings.Contains(content, XML) {
 			ctx := context.WithValue(r.Context(), Content, XML)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		} else if content == "" || content == "*/*" {
+			ctx := context.WithValue(r.Context(), Content, YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			HttpError(w, http.StatusUnsupportedMediaType)
 		}
 	})
+}
+
+func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := mux.CurrentRoute(r)
+		timer := prometheus.NewTimer(httpDuration.WithLabelValues(route.GetName()))
+		next.ServeHTTP(w, r)
+		timer.ObserveDuration()
+	})
+}
+
+func (s *Server) CounterMiddleware(next http.Handler) http.Handler {
+	return promhttp.InstrumentHandlerCounter(httpCounter, next)
 }
 
 func HttpError(w http.ResponseWriter, code int) {

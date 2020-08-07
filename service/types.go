@@ -21,14 +21,18 @@ const (
 )
 
 //ContentType of output
-type ContentType byte
+type ContentType string
 
 const (
-	Unknown ContentType = iota
-	JSON
-	YAML
-	XML
+	Unknown ContentType = "text/html"
+	JSON                = "application/json"
+	YAML                = "text/yaml"
+	XML                 = "application/xml"
 )
+
+func (t ContentType) String() string {
+	return string(t)
+}
 
 type Query struct {
 	Hostname string `json:"hostname" xml:"hostname"`
@@ -145,11 +149,11 @@ type VersionInfo struct {
 }
 
 type Version struct {
-	BuildDate    string `yaml:"buildDate" json:"buildDate" xml:"build-date"`
+	BuildDate    string `yaml:"buildDate,omitempty" json:"buildDate,omitempty" xml:"build-date,omitempty"`
 	Compiler     string `yaml:"compiler" json:"compiler" xml:"compiler"`
-	GitCommit    string `yaml:"gitCommit" json:"gitCommit" xml:"git-commit"`
-	GitTreeState string `yaml:"gitTreeState" json:"gitTreeState" xml:"git-tree-state"`
-	GitVersion   string `yaml:"gitVersion" json:"gitVersion" xml:"git-version"`
+	GitCommit    string `yaml:"gitCommit,omitempty" json:"gitCommit,omitempty" xml:"git-commit,omitempty"`
+	GitTreeState string `yaml:"gitTreeState,omitempty" json:"gitTreeState,omitempty" xml:"git-tree-state,omitempty"`
+	GitVersion   string `yaml:"gitVersion,omitempty" json:"gitVersion,omitempty" xml:"git-version,omitempty"`
 	GoVersion    string `yaml:"goVersion" json:"goVersion" xml:"go-version"`
 	Platform     string `yaml:"platform" json:"platform" xml:"platform"`
 }
