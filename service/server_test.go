@@ -1,4 +1,4 @@
-package main
+package service_test
 
 import (
 	"context"
@@ -6,13 +6,13 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/zauberhaus/rest2dhcp/client"
+	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/service"
 	"gopkg.in/yaml.v3"
 )
@@ -38,7 +38,7 @@ func check() bool {
 }
 
 func setup() (*service.Server, context.CancelFunc) {
-	server := service.NewServer(nil, nil, client.AutoDetect, ":8080", 30*time.Second)
+	server := service.NewServer(nil, nil, nil, dhcp.AutoDetect, ":8080", 30*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	server.Start(ctx)
 	return server, cancel
@@ -60,24 +60,24 @@ func TestMain(m *testing.M) {
 }
 
 func TestService(t *testing.T) {
-	t.Run("TestWorkflowYAML", DHCPWorkflow(service.YAML))
-	t.Run("TestWorkflowJSON", DHCPWorkflow(service.JSON))
-	t.Run("TestWorkflowXML", DHCPWorkflow(service.XML))
+	t.Run("TestWorkflowYAML", DHCPWorkflow(client.YAML))
+	t.Run("TestWorkflowJSON", DHCPWorkflow(client.JSON))
+	t.Run("TestWorkflowXML", DHCPWorkflow(client.XML))
 }
 
 func TestVersion(t *testing.T) {
-	t.Run("TestVersionYAML", Version(service.YAML))
-	t.Run("TestVersionJSON", Version(service.JSON))
-	t.Run("TestVersionXML", Version(service.XML))
+	t.Run("TestVersionYAML", Version(client.YAML))
+	t.Run("TestVersionJSON", Version(client.JSON))
+	t.Run("TestVersionXML", Version(client.XML))
 }
 
 func TestMetrics(t *testing.T) {
 }
 
-func DHCPWorkflow(mime service.ContentType) func(t *testing.T) {
+func DHCPWorkflow(mime client.ContentType) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		hostname := "test"
+		hostname := "client1"
 
 		resp := request(t, "GET", url+hostname, mime)
 		result := checkResult(t, resp, hostname, mime)
@@ -85,14 +85,14 @@ func DHCPWorkflow(mime service.ContentType) func(t *testing.T) {
 		resp2 := request(t, "GET", url+hostname+"/"+result.Mac.String(), mime)
 		result2 := checkResult(t, resp2, hostname, mime)
 
-		if result.IP != result2.IP {
+		if result.IP.String() != result2.IP.String() {
 			t.Fatalf("Different IP's %v != %v", result.IP, result2.IP)
 		}
 
-		resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
+		resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
 		result = checkResult(t, resp, hostname, mime)
 
-		resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP, mime)
+		resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("Wrong http status: %v", resp.Status)
@@ -100,7 +100,7 @@ func DHCPWorkflow(mime service.ContentType) func(t *testing.T) {
 	}
 }
 
-func Version(mime service.ContentType) func(t *testing.T) {
+func Version(mime client.ContentType) func(t *testing.T) {
 	return func(t *testing.T) {
 		resp := request(t, "GET", versionURL, mime)
 
@@ -109,7 +109,7 @@ func Version(mime service.ContentType) func(t *testing.T) {
 		}
 
 		value := resp.Header.Get("Content-Type")
-		if service.ContentType(value) != mime {
+		if client.ContentType(value) != mime {
 			t.Fatalf("Wrong content type: %v != %v", value, mime)
 		}
 
@@ -118,7 +118,7 @@ func Version(mime service.ContentType) func(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 
-		var version service.VersionInfo
+		var version client.VersionInfo
 		unmarshal(t, data, &version, mime)
 
 		if version.ServiceVersion.GitCommit == "" {
@@ -128,7 +128,7 @@ func Version(mime service.ContentType) func(t *testing.T) {
 	}
 }
 
-func request(t *testing.T, method string, url string, mime service.ContentType) *http.Response {
+func request(t *testing.T, method string, url string, mime client.ContentType) *http.Response {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -145,13 +145,13 @@ func request(t *testing.T, method string, url string, mime service.ContentType) 
 	return resp
 }
 
-func checkResult(t *testing.T, resp *http.Response, hostname string, mime service.ContentType) *service.Result {
+func checkResult(t *testing.T, resp *http.Response, hostname string, mime client.ContentType) *client.Result {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Wrong http status: %v", resp.Status)
 	}
 
 	value := resp.Header.Get("Content-Type")
-	if service.ContentType(value) != mime {
+	if client.ContentType(value) != mime {
 		t.Fatalf("Wrong content type: %v != %v", value, mime)
 	}
 
@@ -160,15 +160,14 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime servic
 		t.Fatalf("%v", err)
 	}
 
-	var result service.Result
+	var result client.Result
 	unmarshal(t, data, &result, mime)
 
 	if result.Hostname != hostname {
 		t.Fatalf("Wrong hostname: '%v' != '%v'", result.Hostname, hostname)
 	}
 
-	ip := net.ParseIP(result.IP)
-	if ip == nil {
+	if result.IP == nil {
 		t.Fatalf("Invalid return ip")
 	}
 
@@ -180,21 +179,21 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime servic
 	return &result
 }
 
-func unmarshal(t *testing.T, data []byte, result interface{}, mime service.ContentType) {
+func unmarshal(t *testing.T, data []byte, result interface{}, mime client.ContentType) {
 	switch mime {
-	case service.YAML:
+	case client.YAML:
 		err := yaml.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)
 			return
 		}
-	case service.JSON:
+	case client.JSON:
 		err := json.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)
 			return
 		}
-	case service.XML:
+	case client.XML:
 		err := xml.Unmarshal(data, result)
 		if err != nil {
 			t.Fatalf("%v", err)

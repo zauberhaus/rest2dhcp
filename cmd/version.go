@@ -20,6 +20,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/service"
 	"gopkg.in/yaml.v3"
 )
@@ -30,7 +31,7 @@ var versionCmd = &cobra.Command{
 	Short: "Show the version info",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		version := service.ServiceVersion
+		version := client.VersionInfo{ServiceVersion: service.Version}
 		data, err := yaml.Marshal(version)
 		if err != nil {
 			log.Fatal(err)

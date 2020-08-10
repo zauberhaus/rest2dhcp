@@ -1,4 +1,4 @@
-package client
+package dhcp
 
 import (
 	cryptorand "crypto/rand"
@@ -19,7 +19,6 @@ type Lease struct {
 	*DHCP4
 	Timestamp time.Time
 	Hostname  string
-	Cid       string
 	Done      chan bool
 	err       error
 }
@@ -152,29 +151,69 @@ func (d *DHCP4) GetExpireTime() time.Time {
 	return expire
 }
 
+func (d *DHCP4) GetRebindTime() time.Time {
+
+	renewal := time.Now()
+
+	o := d.GetOption(layers.DHCPOptT2)
+	if o != nil {
+		duration := time.Duration(binary.BigEndian.Uint32(o.Data)) * time.Second
+		renewal = renewal.Add(duration)
+	} else {
+		o := d.GetOption(layers.DHCPOptLeaseTime)
+		if o != nil {
+			duration := time.Duration(binary.BigEndian.Uint32(o.Data)*7/8) * time.Second
+			renewal = renewal.Add(duration)
+		}
+	}
+
+	return renewal
+}
+
 func (d *DHCP4) GetRenewalTime() time.Time {
 
 	renewal := time.Now()
 
 	o := d.GetOption(layers.DHCPOptT1)
-	if o == nil {
-		o = d.GetOption(layers.DHCPOptT2)
-		if o == nil {
-			o = d.GetOption(layers.DHCPOptLeaseTime)
-			if o != nil {
-				duration := time.Duration(binary.BigEndian.Uint32(o.Data)/2) * time.Second
-				renewal = renewal.Add(duration)
-			}
-		} else {
+	if o != nil {
+		duration := time.Duration(binary.BigEndian.Uint32(o.Data)) * time.Second
+		renewal = renewal.Add(duration)
+	} else {
+		o := d.GetOption(layers.DHCPOptLeaseTime)
+		if o != nil {
 			duration := time.Duration(binary.BigEndian.Uint32(o.Data)/2) * time.Second
 			renewal = renewal.Add(duration)
 		}
-	} else {
-		duration := time.Duration(binary.BigEndian.Uint32(o.Data)) * time.Second
-		renewal = renewal.Add(duration)
 	}
 
 	return renewal
+}
+
+func (d *DHCP4) GetSubnetMask() net.IP {
+	o := d.GetOption(layers.DHCPOptSubnetMask)
+	if o != nil && o.Length == 4 {
+		return o.Data
+	}
+
+	return nil
+}
+
+func (d *DHCP4) GetDNS() net.IP {
+	o := d.GetOption(layers.DHCPOptDNS)
+	if o != nil && o.Length == 4 {
+		return o.Data
+	}
+
+	return nil
+}
+
+func (d *DHCP4) GetRouter() net.IP {
+	o := d.GetOption(layers.DHCPOptRouter)
+	if o != nil && o.Length == 4 {
+		return o.Data
+	}
+
+	return nil
 }
 
 func (d *DHCP4) SetOption(opt layers.DHCPOpt, data []byte) {
@@ -215,7 +254,6 @@ func (d *DHCP4) Serialize() []byte {
 
 func (d *DHCP4) SetHostname(hostname string) {
 	d.SetOption(layers.DHCPOptHostname, []byte(hostname))
-	d.SetOption(layers.DHCPOptClientID, []byte(hostname))
 }
 
 func (l *Lease) SetHostname(hostname string) {

@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/cmd"
 	"github.com/zauberhaus/rest2dhcp/service"
 )
@@ -29,8 +30,8 @@ var (
 )
 
 func main() {
-	version := service.NewVersionInfo(buildTime, gitCommit, tag, treeState)
-	service.ServiceVersion = version
+	version := client.NewVersion(buildTime, gitCommit, tag, treeState)
+	service.Version = version
 
 	cmd.Execute()
 }

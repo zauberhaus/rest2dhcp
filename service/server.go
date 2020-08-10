@@ -21,7 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
-	cl "github.com/zauberhaus/rest2dhcp/client"
+	"github.com/zauberhaus/rest2dhcp/client"
+	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"gopkg.in/yaml.v3"
 )
 
@@ -56,23 +57,23 @@ var (
 		Help: "Counter for HTTP requests",
 	}, []string{"code"})
 
-	ServiceVersion *VersionInfo
+	Version *client.Version
 )
 
 type Server struct {
 	http.Server
-	client  *cl.Client
+	client  *dhcp.Client
 	timeout time.Duration
 	Done    chan bool
 }
 
-func NewServer(local net.IP, remote net.IP, mode cl.ConnectionType, addr string, timeout time.Duration) *Server {
+func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionType, addr string, timeout time.Duration) *Server {
 	server := Server{}
 	server.Addr = addr
 	server.Done = make(chan bool)
 	server.timeout = timeout
 
-	server.client = cl.NewClient(local, remote, mode)
+	server.client = dhcp.NewClient(local, remote, relay, mode)
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
@@ -82,6 +83,12 @@ func NewServer(local net.IP, remote net.IP, mode cl.ConnectionType, addr string,
 
 	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
 
+	log.Printf("Version:\n%v\n", Version)
+
+	Version.DHCPServer = server.client.GetDHCPServerIP()
+	Version.RelayIP = server.client.GetDHCPRelayIP()
+	Version.Mode = server.client.GetDHCPRelayMode()
+
 	return &server
 }
 
@@ -89,23 +96,16 @@ func RunServer(cmd *cobra.Command, args []string) {
 
 	remote, _ := cmd.Flags().GetIP("server")
 	local, _ := cmd.Flags().GetIP("client")
+	relay, _ := cmd.Flags().GetIP("relay")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	listen, _ := cmd.Flags().GetString("listen")
 
-	mode := cl.DefaultRelay
+	mode := dhcp.DefaultRelay
 
 	modetxt, _ := cmd.Flags().GetString("mode")
-	switch modetxt {
-	case "auto":
-		mode = cl.AutoDetect
-	case "relay":
-		mode = cl.DefaultRelay
-	case "fritzbox":
-		mode = cl.Fritzbox
-	case "android":
-		mode = cl.BrokenRelay
-	default:
-		fmt.Printf("Unknown DHCP mode: %s", modetxt)
+	err := mode.Parse(modetxt)
+	if err != nil {
+		fmt.Printf("Error: %v\n\n", err)
 		cmd.Usage()
 		os.Exit(1)
 	}
@@ -115,7 +115,7 @@ func RunServer(cmd *cobra.Command, args []string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	server := NewServer(local, remote, mode, listen, timeout)
+	server := NewServer(local, remote, relay, mode, listen, timeout)
 	server.Start(ctx)
 
 	signal := <-done
@@ -191,8 +191,9 @@ func (s *Server) setup(router *mux.Router) {
 }
 
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {
-	contentType := ContentType(r.Context().Value(Content).(string))
-	s.write(w, ServiceVersion, contentType)
+	contentType := client.ContentType(r.Context().Value(Content).(string))
+
+	s.write(w, &client.VersionInfo{ServiceVersion: Version}, contentType)
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +201,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
@@ -217,17 +219,11 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := Result{
-		Lease{
-			Hostname: query.Hostname,
-			Mac:      MAC{lease.ClientHWAddr},
-			IP:       lease.YourClientIP.String(),
-			Renew:    lease.GetRenewalTime(),
-			Expire:   lease.GetExpireTime(),
-		},
+	result := client.Result{
+		Lease: client.NewLease(query.Hostname, *lease.DHCP4),
 	}
 
-	contentType := ContentType(r.Context().Value(Content).(string))
+	contentType := client.ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
 
@@ -252,17 +248,11 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := Result{
-		Lease{
-			Hostname: query.Hostname,
-			Mac:      MAC{lease.ClientHWAddr},
-			IP:       lease.YourClientIP.String(),
-			Renew:    lease.GetRenewalTime(),
-			Expire:   lease.GetExpireTime(),
-		},
+	result := client.Result{
+		Lease: client.NewLease(query.Hostname, *lease.DHCP4),
 	}
 
-	contentType := ContentType(r.Context().Value(Content).(string))
+	contentType := client.ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
 
@@ -285,36 +275,36 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Ok.\n"))
 }
 
-func (s *Server) write(w http.ResponseWriter, value interface{}, t ContentType) error {
+func (s *Server) write(w http.ResponseWriter, value interface{}, t client.ContentType) error {
 
 	switch t {
-	case JSON:
+	case client.JSON:
 		data, err := json.MarshalIndent(value, "", "  ")
 		if err != nil {
 			return err
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", JSON)
+		w.Header().Set("Content-Type", client.JSON)
 		_, err = w.Write(data)
 		return err
-	case XML:
+	case client.XML:
 		data, err := xml.MarshalIndent(value, "", "  ")
 		if err != nil {
 			return err
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", XML)
+		w.Header().Set("Content-Type", client.XML)
 		_, err = w.Write(data)
 		return err
-	case YAML:
+	case client.YAML:
 		data, err := yaml.Marshal(value)
 		if err != nil {
 			return err
 		}
 
-		w.Header().Set("Content-Type", YAML)
+		w.Header().Set("Content-Type", client.YAML)
 		_, err = w.Write(data)
 		return err
 	}
@@ -326,17 +316,17 @@ func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		content := r.Header.Get("Accept")
 
-		if strings.Contains(content, JSON) {
-			ctx := context.WithValue(r.Context(), Content, JSON)
+		if strings.Contains(content, client.JSON) {
+			ctx := context.WithValue(r.Context(), Content, client.JSON)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, YAML) {
-			ctx := context.WithValue(r.Context(), Content, YAML)
+		} else if strings.Contains(content, client.YAML) {
+			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, XML) {
-			ctx := context.WithValue(r.Context(), Content, XML)
+		} else if strings.Contains(content, client.XML) {
+			ctx := context.WithValue(r.Context(), Content, client.XML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else if content == "" || content == "*/*" {
-			ctx := context.WithValue(r.Context(), Content, YAML)
+			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			HttpError(w, http.StatusUnsupportedMediaType)

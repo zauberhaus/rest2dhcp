@@ -18,9 +18,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/service"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -59,10 +61,11 @@ func init() {
 
 	rootCmd.Flags().IPP("server", "s", nil, "DHCP server ip (autodetect)")
 	rootCmd.Flags().IPP("client", "c", nil, "Local IP for DHCP relay client (autodetect)")
+	rootCmd.Flags().IPP("relay", "r", nil, "Relay IP for DHCP relay client (client IP)")
 	rootCmd.Flags().StringP("listen", "l", ":8080", "Address of the web service")
-	rootCmd.Flags().StringP("mode", "m", "auto", "DHCP mode: auto, relay, fritxbox, android")
+	rootCmd.Flags().StringP("mode", "m", "auto", "DHCP connection mode: "+strings.Join(dhcp.AllConnectionTypes, "|"))
 	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Service query timeout")
-	rootCmd.Flags().DurationP("retry", "r", 15*time.Second, "DHCP retry time")
+	rootCmd.Flags().DurationP("retry", "x", 15*time.Second, "DHCP retry time")
 	rootCmd.Flags().DurationP("dhcp-timeout", "d", 5*time.Second, "DHCP query timeout")
 }
 
