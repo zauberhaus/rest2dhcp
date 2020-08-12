@@ -1,131 +1,195 @@
 package service_test
 
 import (
-	"context"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"testing"
-	"time"
 
 	"github.com/zauberhaus/rest2dhcp/client"
-	"github.com/zauberhaus/rest2dhcp/dhcp"
-	"github.com/zauberhaus/rest2dhcp/service"
+	"github.com/zauberhaus/rest2dhcp/test"
 	"gopkg.in/yaml.v3"
 )
 
-var (
+const (
 	url        = "http://localhost:8080/ip/"
 	versionURL = "http://localhost:8080/version"
 	metricsURL = "http://localhost:8080/metrics"
+
+	buildDate    = "2020-08-11T10:06:44NZST"
+	gitCommit    = "03fd9a8658c81c088fb548cc43b56703e6ee145b"
+	gitVersion   = "v0.0.1"
+	gitTreeState = "dirty"
 )
 
-func check() bool {
-	resp, err := http.Get(versionURL)
-	if err != nil {
-		return true
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Can't read version: %s (%v)", resp.Status, resp.StatusCode)
-		os.Exit(1)
-	}
-
-	return false
-}
-
-func setup() (*service.Server, context.CancelFunc) {
-	server := service.NewServer(nil, nil, nil, dhcp.AutoDetect, ":8080", 30*time.Second)
-	ctx, cancel := context.WithCancel(context.Background())
-	server.Start(ctx)
-	return server, cancel
-}
+var (
+	server = test.TestServer{}
+)
 
 func TestMain(m *testing.M) {
-	start := check()
-
-	if start {
-		server, cancel := setup()
-		code := m.Run()
-		cancel()
-		<-server.Done
-		os.Exit(code)
-	} else {
-		code := m.Run()
-		os.Exit(code)
-	}
+	server.Run(m)
 }
 
 func TestService(t *testing.T) {
-	t.Run("TestWorkflowYAML", DHCPWorkflow(client.YAML))
-	t.Run("TestWorkflowJSON", DHCPWorkflow(client.JSON))
-	t.Run("TestWorkflowXML", DHCPWorkflow(client.XML))
+	testCases := []struct {
+		Name     string
+		Hostname string
+		Mime     client.ContentType
+	}{
+		{
+			Name:     "Test workflow via HTTP request with content type XML",
+			Hostname: "srever-test-xml",
+			Mime:     client.XML,
+		},
+		{
+			Name:     "Test workflow via HTTP request with content type YAML",
+			Hostname: "server-test-yaml",
+			Mime:     client.YAML,
+		},
+		{
+			Name:     "Test workflow via HTTP request with content type JSON",
+			Hostname: "server-test-json",
+			Mime:     client.JSON,
+		},
+		{
+			Name:     "Test workflow via HTTP request without a content type",
+			Hostname: "server-test-unknown",
+			Mime:     client.Unknown,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+			mime := tc.Mime
+
+			hostname := tc.Hostname
+
+			resp := request(t, "GET", url+hostname, mime)
+			result := checkResult(t, resp, hostname, mime)
+
+			resp2 := request(t, "GET", url+hostname+"/"+result.Mac.String(), mime)
+			result2 := checkResult(t, resp2, hostname, mime)
+
+			if result.IP.String() != result2.IP.String() {
+				t.Fatalf("Different IP's %v != %v", result.IP, result2.IP)
+			}
+
+			resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
+			result = checkResult(t, resp, hostname, mime)
+
+			resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Wrong http status: %v", resp.Status)
+			}
+		})
+	}
 }
 
 func TestVersion(t *testing.T) {
-	t.Run("TestVersionYAML", Version(client.YAML))
-	t.Run("TestVersionJSON", Version(client.JSON))
-	t.Run("TestVersionXML", Version(client.XML))
+	testCases := []struct {
+		Name string
+		Mime client.ContentType
+	}{
+		{
+			Name: "Read version via HTTP request with content type XML",
+			Mime: client.XML,
+		},
+		{
+			Name: "Read version via HTTP request with content type YAML",
+			Mime: client.YAML,
+		},
+		{
+			Name: "Read version via HTTP request with content type JSON",
+			Mime: client.JSON,
+		},
+		{
+			Name: "Read version via HTTP request without a content type",
+			Mime: client.Unknown,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+			mime := tc.Mime
+
+			resp := request(t, "GET", versionURL, mime)
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Wrong http status: %v", resp.Status)
+			}
+
+			if mime == client.Unknown {
+				mime = client.YAML
+			}
+
+			value := resp.Header.Get("Content-Type")
+			if client.ContentType(value) != mime {
+				t.Fatalf("Wrong content type: %v != %v", value, mime)
+			}
+
+			data, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			var version client.VersionInfo
+			unmarshal(t, data, &version, mime)
+
+			if version.ServiceVersion == nil {
+				t.Errorf("Invalid Version info")
+			}
+
+			if server.IsStarted() {
+				if version.ServiceVersion.BuildDate != buildDate {
+					t.Errorf("Invalid buid date %v!=%v", version.ServiceVersion.BuildDate, buildDate)
+				}
+
+				if version.ServiceVersion.GitCommit != gitCommit {
+					t.Errorf("Invalid git commit %v!=%v", version.ServiceVersion.GitCommit, gitCommit)
+				}
+
+				if version.ServiceVersion.GitVersion != gitVersion {
+					t.Errorf("Invalid git version %v!=%v", version.ServiceVersion.GitVersion, gitVersion)
+				}
+
+				if version.ServiceVersion.GitTreeState != gitTreeState {
+					t.Errorf("Invalid git tree state %v!=%v", version.ServiceVersion.GitTreeState, gitTreeState)
+				}
+			} else {
+				if version.ServiceVersion.GitCommit == "" {
+					t.Errorf("Invalid version info:\n%v", string(data))
+				}
+			}
+		})
+	}
+}
+
+func TestUnsupportedMediaType(t *testing.T) {
+	req, err := http.NewRequest("GET", versionURL, nil)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	req.Header.Set("Accept", "text/dummy")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	if resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("Unexpected response status: %v", resp.Status)
+	}
 }
 
 func TestMetrics(t *testing.T) {
-}
-
-func DHCPWorkflow(mime client.ContentType) func(t *testing.T) {
-	return func(t *testing.T) {
-
-		hostname := "client1"
-
-		resp := request(t, "GET", url+hostname, mime)
-		result := checkResult(t, resp, hostname, mime)
-
-		resp2 := request(t, "GET", url+hostname+"/"+result.Mac.String(), mime)
-		result2 := checkResult(t, resp2, hostname, mime)
-
-		if result.IP.String() != result2.IP.String() {
-			t.Fatalf("Different IP's %v != %v", result.IP, result2.IP)
-		}
-
-		resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
-		result = checkResult(t, resp, hostname, mime)
-
-		resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
-
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("Wrong http status: %v", resp.Status)
-		}
-	}
-}
-
-func Version(mime client.ContentType) func(t *testing.T) {
-	return func(t *testing.T) {
-		resp := request(t, "GET", versionURL, mime)
-
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("Wrong http status: %v", resp.Status)
-		}
-
-		value := resp.Header.Get("Content-Type")
-		if client.ContentType(value) != mime {
-			t.Fatalf("Wrong content type: %v != %v", value, mime)
-		}
-
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-
-		var version client.VersionInfo
-		unmarshal(t, data, &version, mime)
-
-		if version.ServiceVersion.GitCommit == "" {
-			t.Errorf("Invalid GitCommit")
-		}
-
-	}
 }
 
 func request(t *testing.T, method string, url string, mime client.ContentType) *http.Response {
@@ -134,7 +198,9 @@ func request(t *testing.T, method string, url string, mime client.ContentType) *
 		t.Fatalf("%v", err)
 	}
 
-	req.Header.Set("Accept", string(mime))
+	if mime != client.Unknown {
+		req.Header.Set("Accept", string(mime))
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -148,6 +214,10 @@ func request(t *testing.T, method string, url string, mime client.ContentType) *
 func checkResult(t *testing.T, resp *http.Response, hostname string, mime client.ContentType) *client.Result {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Wrong http status: %v", resp.Status)
+	}
+
+	if mime == client.Unknown {
+		mime = client.YAML
 	}
 
 	value := resp.Header.Get("Content-Type")

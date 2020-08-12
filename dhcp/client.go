@@ -125,13 +125,13 @@ var (
 	htable = crc64.MakeTable(crc64.ECMA)
 )
 
-func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionType) *Client {
+func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionType, timeout time.Duration, retry time.Duration) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := Client{
 		store:   NewStore(60 * time.Second),
-		timeout: 3 * time.Second,
-		retry:   15 * time.Second,
+		timeout: timeout,
+		retry:   retry,
 		ctx:     ctx,
 		cancel:  cancel,
 		relay:   relay,

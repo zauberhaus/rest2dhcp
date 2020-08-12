@@ -164,7 +164,7 @@ func (c *Client) request(method string, url string, mime ContentType) (*http.Res
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, NewError(-1, err.Error())
 	}
 
 	return resp, nil

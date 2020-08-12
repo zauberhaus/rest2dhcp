@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -58,6 +59,9 @@ var (
 	}, []string{"code"})
 
 	Version *client.Version
+
+	// only one server can run at the same time
+	mutex sync.Mutex
 )
 
 type Server struct {
@@ -65,15 +69,18 @@ type Server struct {
 	client  *dhcp.Client
 	timeout time.Duration
 	Done    chan bool
+	Info    *client.Version
 }
 
-func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionType, addr string, timeout time.Duration) *Server {
+func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionType, addr string, timeout time.Duration, dhcpTimeout time.Duration, retry time.Duration, version *client.Version) *Server {
 	server := Server{}
 	server.Addr = addr
 	server.Done = make(chan bool)
 	server.timeout = timeout
 
-	server.client = dhcp.NewClient(local, remote, relay, mode)
+	mutex.Lock()
+
+	server.client = dhcp.NewClient(local, remote, relay, mode, dhcpTimeout, retry)
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
@@ -83,11 +90,13 @@ func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionTy
 
 	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
 
-	log.Printf("Version:\n%v\n", Version)
-
-	Version.DHCPServer = server.client.GetDHCPServerIP()
-	Version.RelayIP = server.client.GetDHCPRelayIP()
-	Version.Mode = server.client.GetDHCPRelayMode()
+	if version != nil {
+		version.DHCPServer = server.client.GetDHCPServerIP()
+		version.RelayIP = server.client.GetDHCPRelayIP()
+		version.Mode = server.client.GetDHCPRelayMode()
+		log.Printf("Version:\n%v\n", version)
+		server.Info = version
+	}
 
 	return &server
 }
@@ -99,6 +108,8 @@ func RunServer(cmd *cobra.Command, args []string) {
 	relay, _ := cmd.Flags().GetIP("relay")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	listen, _ := cmd.Flags().GetString("listen")
+	dhcpTimeout, _ := cmd.Flags().GetDuration("dhcp-timeout")
+	retry, _ := cmd.Flags().GetDuration("retry")
 
 	mode := dhcp.DefaultRelay
 
@@ -115,7 +126,7 @@ func RunServer(cmd *cobra.Command, args []string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	server := NewServer(local, remote, relay, mode, listen, timeout)
+	server := NewServer(local, remote, relay, mode, listen, timeout, dhcpTimeout, retry, Version)
 	server.Start(ctx)
 
 	signal := <-done
@@ -124,7 +135,7 @@ func RunServer(cmd *cobra.Command, args []string) {
 	cancel()
 
 	<-server.Done
-	log.Printf("Done.")
+	log.Println("Done.")
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -148,6 +159,8 @@ func (s *Server) Start(ctx context.Context) {
 		log.Print("Server stopped")
 
 		close(s.Done)
+
+		mutex.Unlock()
 	}()
 }
 
@@ -185,7 +198,7 @@ func (s *Server) setup(router *mux.Router) {
 			Name(k).
 			Methods("GET").
 			Path(p).
-			HandlerFunc(s.get)
+			HandlerFunc(s.lease)
 	}
 
 }
@@ -193,10 +206,10 @@ func (s *Server) setup(router *mux.Router) {
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 
-	s.write(w, &client.VersionInfo{ServiceVersion: Version}, contentType)
+	s.write(w, &client.VersionInfo{ServiceVersion: s.Info}, contentType)
 }
 
-func (s *Server) get(w http.ResponseWriter, r *http.Request) {
+func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 
 	query, err := NewQuery(r)
 	if err != nil {
@@ -210,7 +223,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	lease := <-s.client.GetLease(ctx, query.Hostname, query.Mac.HardwareAddr)
 
 	if lease == nil {
-		HttpError(w, http.StatusRequestTimeout)
+		HTTPError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -231,6 +244,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
@@ -239,7 +253,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	lease := <-s.client.ReNew(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
 
 	if lease == nil {
-		HttpError(w, http.StatusRequestTimeout)
+		HTTPError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -268,7 +282,7 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 	lease := <-s.client.Release(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
 
 	if lease != nil {
-		HttpError(w, http.StatusRequestTimeout)
+		HTTPError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -329,7 +343,7 @@ func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
-			HttpError(w, http.StatusUnsupportedMediaType)
+			HTTPError(w, http.StatusUnsupportedMediaType)
 		}
 	})
 }
@@ -347,6 +361,6 @@ func (s *Server) CounterMiddleware(next http.Handler) http.Handler {
 	return promhttp.InstrumentHandlerCounter(httpCounter, next)
 }
 
-func HttpError(w http.ResponseWriter, code int) {
+func HTTPError(w http.ResponseWriter, code int) {
 	http.Error(w, http.StatusText(code), code)
 }

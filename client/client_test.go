@@ -1,58 +1,43 @@
 package client_test
 
 import (
-	"context"
 	"net"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
-	"github.com/zauberhaus/rest2dhcp/service"
+	"github.com/zauberhaus/rest2dhcp/test"
+)
+
+const (
+	versionURL = "http://localhost:8080/version"
+
+	buildDate    = "2020-08-11T10:06:44NZST"
+	gitCommit    = "03fd9a8658c81c088fb548cc43b56703e6ee145b"
+	gitVersion   = "v0.0.1"
+	gitTreeState = "dirty"
 )
 
 var (
 	host = "http://localhost:8080"
-	//hostname  = "client-test-1"
-	//hostname2 = "client-test-2"
 
 	leases []*client.Lease
+	server = test.TestServer{}
 )
 
-func check() bool {
-	return false
-}
-
-func setup() (*service.Server, context.CancelFunc) {
-	server := service.NewServer(nil, nil, nil, dhcp.AutoDetect, ":8080", 30*time.Second)
-	ctx, cancel := context.WithCancel(context.Background())
-	server.Start(ctx)
-	return server, cancel
-}
-
 func TestMain(m *testing.M) {
-	start := check()
-
-	if start {
-		server, cancel := setup()
-		code := m.Run()
-		cancel()
-		<-server.Done
-		os.Exit(code)
-	} else {
-		code := m.Run()
-		os.Exit(code)
-	}
+	server.Run(m)
 }
 
-func TestVersion(t *testing.T) {
+func TestClientVersion(t *testing.T) {
+	t.Parallel()
 	t.Run("VersionYaml", getVersion(client.YAML))
 	t.Run("VersionJSON", getVersion(client.YAML))
 	t.Run("VersionXML", getVersion(client.YAML))
 }
 
-func TestLease(t *testing.T) {
+func TestClient(t *testing.T) {
 	t.Run("LeaseYaml", getLease(client.YAML, "test-yaml", "01:02:03:04:05:06"))
 	t.Run("LeaseJSON", getLease(client.JSON, "test-json", "01:02:03:04:05:07"))
 	t.Run("LeaseXML", getLease(client.XML, "test-xml", "01:02:03:04:05:08"))
@@ -72,12 +57,73 @@ func TestLease(t *testing.T) {
 	t.Run("RelaseRest", relaseAll())
 }
 
-func TestBadRequest(t *testing.T) {
+func TestLeaseBadHostname(t *testing.T) {
 	cl := client.NewClient(host)
 	_, err := cl.Lease("test_123", nil)
 
-	if err == nil {
+	clerr, ok := err.(*client.Error)
+	if !ok {
+		t.Fatalf("Unexpected error type")
+	}
 
+	if clerr.Code() != 400 {
+		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
+	}
+}
+
+func TestLeaseMissingHostname(t *testing.T) {
+	cl := client.NewClient(host)
+	_, err := cl.Lease("", nil)
+
+	clerr, ok := err.(*client.Error)
+	if !ok {
+		t.Fatalf("Unexpected error type")
+	}
+
+	if clerr.Code() != 400 {
+		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
+	}
+}
+
+func TestRenewBadHostname(t *testing.T) {
+	cl := client.NewClient(host)
+	_, err := cl.Renew("test_123", &client.MAC{net.HardwareAddr{1, 2, 3, 4, 5, 6}}, net.IP{1, 2, 3, 4})
+
+	clerr, ok := err.(*client.Error)
+	if !ok {
+		t.Fatalf("Unexpected error type")
+	}
+
+	if clerr.Code() != 400 {
+		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
+	}
+}
+
+func TestRenewMissingHostname(t *testing.T) {
+	cl := client.NewClient(host)
+	_, err := cl.Renew("", nil, nil)
+
+	clerr, ok := err.(*client.Error)
+	if !ok {
+		t.Fatalf("Unexpected error type")
+	}
+
+	if clerr.Code() != 400 {
+		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
+	}
+}
+
+func TestRenewMissingMac(t *testing.T) {
+	cl := client.NewClient(host)
+	_, err := cl.Renew("test_123", nil, nil)
+
+	clerr, ok := err.(*client.Error)
+	if !ok {
+		t.Fatalf("Unexpected error type")
+	}
+
+	if clerr.Code() != 400 {
+		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
 	}
 }
 
@@ -91,12 +137,30 @@ func getVersion(c client.ContentType) func(t *testing.T) {
 			t.Fatalf("Version() failed: %v", err)
 		}
 
-		if version.GoVersion == "" {
-			t.Fatalf("Invalid response")
+		if version == nil {
+			t.Errorf("Invalid Version info")
 		}
 
-		if version.GitCommit == "" {
-			t.Fatalf("Version is empty")
+		if server.IsStarted() {
+			if version.BuildDate != buildDate {
+				t.Errorf("Invalid buid date %v!=%v", version.BuildDate, buildDate)
+			}
+
+			if version.GitCommit != gitCommit {
+				t.Errorf("Invalid git commit %v!=%v", version.GitCommit, gitCommit)
+			}
+
+			if version.GitVersion != gitVersion {
+				t.Errorf("Invalid git version %v!=%v", version.GitVersion, gitVersion)
+			}
+
+			if version.GitTreeState != gitTreeState {
+				t.Errorf("Invalid git tree state %v!=%v", version.GitTreeState, gitTreeState)
+			}
+		} else {
+			if version.GitCommit == "" {
+				t.Errorf("Invalid version info:\n%v", version)
+			}
 		}
 	}
 }
@@ -112,6 +176,10 @@ func getLease(c client.ContentType, hostname string, addr string) func(t *testin
 
 		if err != nil {
 			t.Errorf("client.GetLease: %v", err)
+		}
+
+		if lease == nil {
+			t.Errorf("Empty lease")
 		}
 
 		if lease.IP == nil {
@@ -136,7 +204,7 @@ func getLease(c client.ContentType, hostname string, addr string) func(t *testin
 			t.Fatalf("Different IP addresses %v != %v", lease.IP, lease2.IP)
 		}
 
-		if checkDNS(lease) != 2 {
+		if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
 			t.Errorf("DNS entry %s not found.", lease.Hostname)
 		}
 
@@ -171,14 +239,18 @@ func renew(c client.ContentType, pos int) func(t *testing.T) {
 
 		lease, err := cl.Renew(l.Hostname, &l.Mac, l.IP)
 		if err != nil {
-			t.Errorf("client.GetLease: %v", err)
+			t.Fatalf("client.GetLease: %v", err)
+		}
+
+		if lease == nil {
+			t.Fatalf("client.Renew: lease is empty")
 		}
 
 		if lease.Hostname != l.Hostname || lease.IP.String() != l.IP.String() || lease.Mac.String() != l.Mac.String() {
 			t.Errorf("Renewed is different")
 		}
 
-		if checkDNS(lease) != 2 {
+		if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
 			t.Errorf("DNS entry %s not found.", lease.Hostname)
 		}
 	}
@@ -197,11 +269,13 @@ func relaseAll() func(t *testing.T) {
 			}
 		}
 
-		time.Sleep(10 * time.Second)
+		if server.GetMode() == dhcp.Fritzbox {
+			time.Sleep(10 * time.Second)
 
-		for _, l := range leases {
-			if checkDNS(l) != 0 {
-				t.Errorf("DNS entry %s is still there.", l.Hostname)
+			for _, l := range leases {
+				if checkDNS(l) != 0 {
+					t.Errorf("DNS entry %s is still there.", l.Hostname)
+				}
 			}
 		}
 

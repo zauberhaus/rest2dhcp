@@ -25,8 +25,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// versionCmd represents the version command
-var versionCmd = &cobra.Command{
+// VersionCmd represents the version command
+var VersionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show the version info",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -42,5 +42,5 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(VersionCmd)
 }

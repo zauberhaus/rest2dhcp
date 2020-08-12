@@ -17,7 +17,7 @@ type LeaseStoreItem struct {
 }
 
 type LeaseStore struct {
-	store  map[uint32]LeaseStoreItem
+	store  map[uint32]*LeaseStoreItem
 	mutex  sync.RWMutex
 	ttl    time.Duration
 	checks time.Duration
@@ -25,9 +25,9 @@ type LeaseStore struct {
 
 func NewStore(ttl time.Duration) *LeaseStore {
 	return &LeaseStore{
-		store:  make(map[uint32]LeaseStoreItem),
+		store:  make(map[uint32]*LeaseStoreItem),
 		ttl:    ttl,
-		checks: time.Duration(10 * time.Second),
+		checks: time.Duration(ttl / 2),
 	}
 }
 
@@ -35,7 +35,7 @@ func (l *LeaseStore) Set(lease *Lease) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	l.store[lease.Xid] = LeaseStoreItem{
+	l.store[lease.Xid] = &LeaseStoreItem{
 		lease:   lease,
 		expire:  time.Now().Add(l.ttl),
 		status:  lease.GetMsgType(),

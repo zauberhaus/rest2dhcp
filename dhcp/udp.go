@@ -70,7 +70,6 @@ func (c *UDPConn) Receive() (chan *DHCP4, chan error) {
 
 		buffer := make([]byte, 2048)
 		n, _, err := c.conn.ReadFromUDP(buffer)
-		log.Printf("Receive %v bytes", n)
 
 		if err != nil {
 			chan2 <- err

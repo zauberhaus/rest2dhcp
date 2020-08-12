@@ -51,8 +51,9 @@ func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connecti
 }
 
 func (c *DualConn) Close() error {
-	log.Printf("Close listener %s", c.out.LocalAddr().String())
+	log.Printf("Close packet listener %s", c.out.LocalAddr().String())
 	err1 := c.in.Close()
+	log.Printf("Close udp4 listener %s", c.local.String())
 	err2 := c.out.Close()
 
 	if err1 == nil {

@@ -23,10 +23,6 @@ const (
 	XML                 = "application/xml"
 )
 
-func (t ContentType) String() string {
-	return string(t)
-}
-
 func (t *ContentType) Parse(val string) {
 	switch val {
 	case JSON:
@@ -71,20 +67,28 @@ type Result struct {
 	*Lease `json:"lease" xml:"lease" ymal:"lease"`
 }
 
-type ClientError struct {
-	Msg  string
-	Code int
+type Error struct {
+	msg  string
+	code int
 }
 
-func NewError(code int, msg string) *ClientError {
-	return &ClientError{
-		Msg:  msg,
-		Code: code,
+func NewError(code int, msg string) *Error {
+	return &Error{
+		msg:  msg,
+		code: code,
 	}
 }
 
-func (e *ClientError) Error() string {
-	return fmt.Sprintf("(%v %s) %s", e.Code, http.StatusText(e.Code), e.Msg)
+func (e *Error) Msg() string {
+	return e.msg
+}
+
+func (e *Error) Code() int {
+	return e.code
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("(%v %s) %s", e.code, http.StatusText(e.code), e.msg)
 }
 
 type MAC struct {
@@ -144,7 +148,7 @@ func (m MAC) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 type VersionInfo struct {
 	XMLName        xml.Name `xml:"version" json:"-" yaml:"-"`
-	ServiceVersion *Version `yaml:"rest2dhcp" xml:"rest2dhcp" json:"rest2dhcp"`
+	ServiceVersion *Version `yaml:"rest2dhcp,omitempty" xml:"rest2dhcp,omitempty" json:"rest2dhcp,omitempty"`
 }
 
 type Version struct {

@@ -39,7 +39,7 @@ func NewQuery(r *http.Request) (*Query, error) {
 	if ok {
 		tmp, err := net.ParseMAC(mac)
 		if err == nil {
-			query.Mac = client.MAC{tmp}
+			query.Mac = client.MAC{HardwareAddr: tmp}
 		}
 	}
 
