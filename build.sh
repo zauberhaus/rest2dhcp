@@ -1,13 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 
-if [[ $(git diff --stat) != '' ]]; then
-  state='dirty'
+DIFF=`git diff --stat`
+TAGS=`git describe --tags 2> /dev/null`
+NOW=`date +%Y-%m-%dT%H:%M:%S%Z`
+COMMIT=`git rev-parse HEAD`
+
+if test ! -z "$DIFF" ; then
+  STATE='dirty'
 else
-  state='clean'
+  STATE='clean'
 fi
 
-tags=$(git describe --tags 2> /dev/null)
-
-# notice how we avoid spaces in $now to avoid quotation hell in go build command
-now=$(date +%Y-%m-%dT%H:%M:%S%Z)
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitCommit=`git rev-parse HEAD` -X main.buildTime=$now -X main.treeState=$state  -X main.tag=$tags"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitCommit=$COMMIT -X main.buildTime=$NOW -X main.treeState=$STATE -X main.tag=$TAGS"
