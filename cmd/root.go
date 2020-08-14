@@ -35,14 +35,7 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "rest2dhcp",
 	Short: "A REST webservice gateway to a DHCP server",
-	//Long: `A longer description that spans multiple lines and likely contains
-	//examples and usage of using your application. For example:
-	//
-	//Cobra is a CLI library for Go that empowers applications.
-	//This application is a tool to generate the needed files
-	//to quickly create a Cobra application.`,
-
-	Run: service.RunServer,
+	Run:   service.RunServer,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -54,6 +47,7 @@ func Execute() {
 	}
 }
 
+// GetRootCmd returns the cobra root command
 func GetRootCmd() *cobra.Command {
 	return rootCmd
 }

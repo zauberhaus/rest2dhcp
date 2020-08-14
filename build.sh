@@ -2,7 +2,7 @@
 
 DIFF=`git diff --stat`
 TAGS=`git describe --tags 2> /dev/null`
-NOW=`date +%Y-%m-%dT%H:%M:%S%Z`
+NOW=`date +%FT%T.%3N%:z`
 COMMIT=`git rev-parse HEAD`
 
 if test ! -z "$DIFF" ; then

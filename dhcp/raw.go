@@ -1,6 +1,23 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package dhcp
 
 import (
+	"context"
 	"log"
 	"net"
 	"sync"
@@ -10,6 +27,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+// RawConn is a packet connection between local and remote
 type RawConn struct {
 	conn net.PacketConn
 
@@ -20,6 +38,7 @@ type RawConn struct {
 	outmux sync.Mutex
 }
 
+// NewRawConn initialises a new connection
 func NewRawConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
 
 	out, err := net.ListenPacket("ip4:udp", local.IP.String())
@@ -36,19 +55,23 @@ func NewRawConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
 	}
 }
 
+// Close the connection
 func (c *RawConn) Close() error {
 	log.Printf("Close listener %s", c.conn.LocalAddr().String())
 	return c.conn.Close()
 }
 
+// Local returns the local udp address
 func (c *RawConn) Local() *net.UDPAddr {
 	return c.local
 }
 
+// Remote returns the remote udp address
 func (c *RawConn) Remote() *net.UDPAddr {
 	return c.remote
 }
 
+// Send a DHCP data packet
 func (c *RawConn) Send(dhcp *DHCP4) (chan int, chan error) {
 	chan1 := make(chan int)
 	chan2 := make(chan error)
@@ -102,6 +125,7 @@ func (c *RawConn) Send(dhcp *DHCP4) (chan int, chan error) {
 
 }
 
+// Receive a DHCP data packet
 func (c *RawConn) Receive() (chan *DHCP4, chan error) {
 	chan1 := make(chan *DHCP4)
 	chan2 := make(chan error)
@@ -109,8 +133,6 @@ func (c *RawConn) Receive() (chan *DHCP4, chan error) {
 	go func() {
 		c.inmux.Lock()
 		defer c.inmux.Unlock()
-
-		//c.conn.SetDeadline(time.Now().Add(2 * time.Second))
 
 		var (
 			udp  layers.UDP
@@ -167,4 +189,18 @@ func (c *RawConn) serialize(dhcp *layers.DHCPv4) []byte {
 	}
 
 	return buf.Bytes()
+}
+
+// Block outgoing traffic until contect is finished
+func (c *RawConn) Block(ctx context.Context) chan bool {
+	rc := make(chan bool)
+
+	go func() {
+		c.outmux.Lock()
+		defer c.outmux.Unlock()
+		<-ctx.Done()
+		close(rc)
+	}()
+
+	return rc
 }

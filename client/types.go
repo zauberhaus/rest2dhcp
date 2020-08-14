@@ -1,3 +1,19 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package client
 
 import (
@@ -16,6 +32,7 @@ import (
 //ContentType of output
 type ContentType string
 
+// ContentType values
 const (
 	Unknown ContentType = "text/html"
 	JSON                = "application/json"
@@ -23,6 +40,7 @@ const (
 	XML                 = "application/xml"
 )
 
+// Parse the content type from string
 func (t *ContentType) Parse(val string) {
 	switch val {
 	case JSON:
@@ -36,8 +54,12 @@ func (t *ContentType) Parse(val string) {
 	}
 }
 
+func (t ContentType) String() string {
+	return string(t)
+}
+
+// Lease is the result of a lease or renew request
 type Lease struct {
-	XMLName  xml.Name  `xml:"lease" json:"-" yaml:"-"`
 	Hostname string    `yaml:"hostname" json:"hostname" xml:"hostname"`
 	Mac      MAC       `yaml:"mac" json:"mac" xml:"mac"`
 	IP       net.IP    `yaml:"ip" json:"ip" xml:"ip"`
@@ -49,10 +71,11 @@ type Lease struct {
 	Expire   time.Time `json:"expire" xml:"expire"`
 }
 
+// NewLease initialises a new lease object from a DHCP package
 func NewLease(hostname string, d dhcp.DHCP4) *Lease {
 	return &Lease{
 		Hostname: hostname,
-		Mac:      MAC{d.ClientHWAddr},
+		Mac:      MAC(d.ClientHWAddr),
 		IP:       d.YourClientIP,
 		Mask:     d.GetSubnetMask(),
 		DNS:      d.GetDNS(),
@@ -63,15 +86,13 @@ func NewLease(hostname string, d dhcp.DHCP4) *Lease {
 	}
 }
 
-type Result struct {
-	*Lease `json:"lease" xml:"lease" ymal:"lease"`
-}
-
+// Error implementation wird status code
 type Error struct {
 	msg  string
 	code int
 }
 
+// NewError intitialises a new error object
 func NewError(code int, msg string) *Error {
 	return &Error{
 		msg:  msg,
@@ -79,10 +100,12 @@ func NewError(code int, msg string) *Error {
 	}
 }
 
+// Msg returns the error message
 func (e *Error) Msg() string {
 	return e.msg
 }
 
+// Code returns the status code
 func (e *Error) Code() int {
 	return e.code
 }
@@ -91,14 +114,12 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("(%v %s) %s", e.code, http.StatusText(e.code), e.msg)
 }
 
-type MAC struct {
-	net.HardwareAddr
-}
+type MAC net.HardwareAddr
 
 func (m *MAC) UnmarshalYAML(value *yaml.Node) error {
 	mac, err := net.ParseMAC(value.Value)
 	if err == nil {
-		m.HardwareAddr = mac
+		*m = MAC(mac)
 	}
 
 	return err
@@ -114,7 +135,7 @@ func (m *MAC) UnmarshalJSON(b []byte) error {
 
 	mac, err := net.ParseMAC(txt)
 	if err == nil {
-		m.HardwareAddr = mac
+		*m = MAC(mac)
 	}
 
 	return err
@@ -128,7 +149,7 @@ func (m *MAC) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 
 	mac, err := net.ParseMAC(txt)
 	if err == nil {
-		m.HardwareAddr = mac
+		*m = MAC(mac)
 	}
 
 	return err
@@ -146,18 +167,24 @@ func (m MAC) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(m.String(), start)
 }
 
+func (m MAC) String() string {
+	return net.HardwareAddr(m).String()
+}
+
+/*
 type VersionInfo struct {
 	XMLName        xml.Name `xml:"version" json:"-" yaml:"-"`
 	ServiceVersion *Version `yaml:"rest2dhcp,omitempty" xml:"rest2dhcp,omitempty" json:"rest2dhcp,omitempty"`
 }
+*/
 
 type Version struct {
-	BuildDate    string              `yaml:"buildDate,omitempty" json:"buildDate,omitempty" xml:"build-date,omitempty"`
+	BuildDate    string              `yaml:"buildDate,omitempty" json:"buildDate,omitempty" xml:"buildDate,omitempty"`
 	Compiler     string              `yaml:"compiler" json:"compiler" xml:"compiler"`
-	GitCommit    string              `yaml:"gitCommit,omitempty" json:"gitCommit,omitempty" xml:"git-commit,omitempty"`
-	GitTreeState string              `yaml:"gitTreeState,omitempty" json:"gitTreeState,omitempty" xml:"git-tree-state,omitempty"`
-	GitVersion   string              `yaml:"gitVersion,omitempty" json:"gitVersion,omitempty" xml:"git-version,omitempty"`
-	GoVersion    string              `yaml:"goVersion" json:"goVersion" xml:"go-version"`
+	GitCommit    string              `yaml:"gitCommit,omitempty" json:"gitCommit,omitempty" xml:"gitCommit,omitempty"`
+	GitTreeState string              `yaml:"gitTreeState,omitempty" json:"gitTreeState,omitempty" xml:"gitTreeState,omitempty"`
+	GitVersion   string              `yaml:"gitVersion,omitempty" json:"gitVersion,omitempty" xml:"gitVersion,omitempty"`
+	GoVersion    string              `yaml:"goVersion" json:"goVersion" xml:"goVersion"`
 	Platform     string              `yaml:"platform" json:"platform" xml:"platform"`
 	DHCPServer   net.IP              `yaml:"dhcp,omitempty" json:"dhcp,omitempty" xml:"dhcp,omitempty"`
 	RelayIP      net.IP              `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`

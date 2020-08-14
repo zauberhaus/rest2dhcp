@@ -1,5 +1,5 @@
 /*
-Copyright © 2020 NAME HERE <EMAIL ADDRESS>
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,32 +13,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmd
+
+package test_test
 
 import (
 	"fmt"
-	"log"
+	"os/user"
 
-	"github.com/spf13/cobra"
-	"github.com/zauberhaus/rest2dhcp/service"
-	"gopkg.in/yaml.v3"
+	"github.com/zbiljic/go-filelock"
 )
 
-// VersionCmd represents the version command
-var VersionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show the version info",
-	Run: func(cmd *cobra.Command, args []string) {
+// NewServerLock creates and locks a file lock
+func NewServerLock() filelock.TryLockerSafe {
+	tmp := "default"
+	u, err := user.Current()
+	if err == nil {
+		tmp = fmt.Sprint(u.Uid)
+	}
 
-		data, err := yaml.Marshal(service.Version)
-		if err != nil {
-			log.Fatal(err)
-		}
+	fl, err := filelock.New("/tmp/rest2dhcp-test-" + tmp)
+	if err != nil {
+		panic(err)
+	}
 
-		fmt.Println(string(data))
-	},
-}
+	err = fl.Lock()
+	if err != nil {
+		panic(err)
+	}
 
-func init() {
-	rootCmd.AddCommand(VersionCmd)
+	return fl
 }

@@ -1,5 +1,5 @@
 /*
-Copyright © 2020 NAME HERE <EMAIL ADDRESS>
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,32 +13,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmd
 
-import (
-	"fmt"
-	"log"
+package test_test
 
-	"github.com/spf13/cobra"
-	"github.com/zauberhaus/rest2dhcp/service"
-	"gopkg.in/yaml.v3"
+import "github.com/zauberhaus/rest2dhcp/client"
+
+// Test constants
+const (
+	VersionURL = "http://localhost:8080/version"
+
+	BuildDate    = "2020-08-11T10:06:44NZST"
+	GitCommit    = "03fd9a8658c81c088fb548cc43b56703e6ee145b"
+	GitVersion   = "v0.0.1"
+	GitTreeState = "dirty"
 )
 
-// VersionCmd represents the version command
-var VersionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show the version info",
-	Run: func(cmd *cobra.Command, args []string) {
-
-		data, err := yaml.Marshal(service.Version)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println(string(data))
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(VersionCmd)
+// NewTestVersion creates version with tests values
+func NewTestVersion() *client.Version {
+	return client.NewVersion(BuildDate, GitCommit, GitVersion, GitTreeState)
 }

@@ -1,9 +1,23 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package dhcp
 
 import (
 	"context"
-	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"hash/crc64"
 	"io/ioutil"
@@ -15,94 +29,9 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/zauberhaus/rest2dhcp/routing"
-	"gopkg.in/yaml.v3"
 )
 
-type Connection interface {
-	Close() error
-	Send(dhcp *DHCP4) (chan int, chan error)
-	Receive() (chan *DHCP4, chan error)
-	Local() *net.UDPAddr
-	Remote() *net.UDPAddr
-}
-
-type ConnectionType string
-
-const (
-	AutoDetect   ConnectionType = "auto"
-	DefaultRelay ConnectionType = "udp"
-	Relay        ConnectionType = "packet"
-	Fritzbox     ConnectionType = "fritzbox"
-	BrokenRelay  ConnectionType = "broken"
-)
-
-var AllConnectionTypes = []string{
-	AutoDetect.String(),
-	DefaultRelay.String(),
-	Relay.String(),
-	Fritzbox.String(),
-	BrokenRelay.String(),
-}
-
-func (c ConnectionType) String() string {
-	return string(c)
-}
-
-func (c *ConnectionType) Parse(txt string) error {
-	switch txt {
-	case string(AutoDetect):
-		*c = AutoDetect
-	case string(DefaultRelay):
-		*c = DefaultRelay
-	case string(Relay):
-		*c = Relay
-	case string(Fritzbox):
-		*c = Fritzbox
-	case string(BrokenRelay):
-		*c = BrokenRelay
-	default:
-		return fmt.Errorf("Unknown connection type '%s'", txt)
-	}
-
-	return nil
-}
-
-func (c ConnectionType) UnmarshalYAML(value *yaml.Node) error {
-	return c.Parse(value.Value)
-}
-
-func (c ConnectionType) UnmarshalJSON(b []byte) error {
-	var txt string
-	err := json.Unmarshal(b, &txt)
-
-	if err != nil {
-		return err
-	}
-
-	return c.Parse(txt)
-}
-
-func (c ConnectionType) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	var txt string
-	if err := d.DecodeElement(&txt, &start); err != nil {
-		return err
-	}
-
-	return c.Parse(txt)
-}
-
-func (c ConnectionType) MarshalYAML() (interface{}, error) {
-	return c.String(), nil
-}
-
-func (c ConnectionType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.String())
-}
-
-func (c ConnectionType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	return e.EncodeElement(c.String(), start)
-}
-
+// Client is a simple DHCP relay client
 type Client struct {
 	conn  Connection
 	store *LeaseStore
@@ -125,6 +54,7 @@ var (
 	htable = crc64.MakeTable(crc64.ECMA)
 )
 
+// NewClient initialise a new client
 func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionType, timeout time.Duration, retry time.Duration) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -134,13 +64,12 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 		retry:   retry,
 		ctx:     ctx,
 		cancel:  cancel,
-		relay:   relay,
 
 		Done: make(chan bool),
 	}
 
 	if remote == nil {
-		gateway, src, mode, err := client.getDefaultGateway()
+		gateway, src, err := client.getDefaultGateway()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -154,10 +83,8 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 		}
 
 		remote = gateway
-
-		if connType == AutoDetect {
-			connType = mode
-		}
+	} else {
+		remote = remote.To4()
 	}
 
 	if local == nil {
@@ -165,13 +92,20 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 		if err == nil {
 			local = ip
 		}
+	} else {
+		local = local.To4()
+	}
+
+	if connType == AutoDetect {
+		connType = client.getAutoConnectionType(remote)
 	}
 
 	log.Printf("DHCP server: %v", remote)
 	client.remote = remote
 
-	if client.relay != nil {
-		log.Printf("Relay agent IP: %v", client.relay)
+	if relay != nil {
+		log.Printf("Relay agent IP: %v", relay)
+		client.relay = relay.To4()
 	} else {
 		client.relay = local
 	}
@@ -220,6 +154,7 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 	return &client
 }
 
+// Start the client (response listener)
 func (c *Client) Start() {
 	go func() {
 		c.store.Run(c.ctx)
@@ -266,6 +201,7 @@ func (c *Client) Start() {
 	}()
 }
 
+// Stop the client
 func (c *Client) Stop() error {
 	c.cancel()
 	<-c.Done
@@ -273,17 +209,23 @@ func (c *Client) Stop() error {
 }
 
 func (c *Client) GetDHCPServerIP() net.IP {
-	return c.remote
+	return c.remote.To16()
 }
 
 func (c *Client) GetDHCPRelayIP() net.IP {
-	return c.relay
+	return c.relay.To16()
 }
 
 func (c *Client) GetDHCPRelayMode() ConnectionType {
 	return c.mode
 }
 
+/* GetLease request a new lease with given hostname and mac address
+* @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+* @param hostname Hostname
+* @param mac Mac address
+* @param ip IP of lease request
+ */
 func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.HardwareAddr) chan *Lease {
 	chan1 := make(chan *Lease)
 
@@ -489,8 +431,7 @@ func (c *Client) getLocalIP(remote net.IP) (net.IP, error) {
 	return src, err
 }
 
-func (c *Client) getDefaultGateway() (net.IP, net.IP, ConnectionType, error) {
-	mode := DefaultRelay
+func (c *Client) getDefaultGateway() (net.IP, net.IP, error) {
 	r, err := routing.New()
 	if err != nil {
 		log.Fatalln(err)
@@ -498,21 +439,23 @@ func (c *Client) getDefaultGateway() (net.IP, net.IP, ConnectionType, error) {
 
 	_, gateway, src, err := r.Route(net.IP{1, 1, 1, 1})
 
+	return gateway, src, err
+}
+
+func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
+	resp, err := http.Get("http://" + remote.String())
 	if err == nil {
-		resp, err := http.Get("http://" + gateway.String())
+		body, err := ioutil.ReadAll(resp.Body)
 		if err == nil {
-			body, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				if strings.Contains(string(body), "AVM") {
-					mode = Fritzbox
-				}
+			if strings.Contains(string(body), "AVM") {
+				return Fritzbox
 			}
-		} else if gateway.Equal(net.IP{192, 168, 43, 1}) {
-			mode = BrokenRelay
 		}
+	} else if remote.Equal(net.IP{192, 168, 43, 1}) {
+		return BrokenRelay
 	}
 
-	return gateway, src, mode, err
+	return DefaultRelay
 }
 
 func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
@@ -544,6 +487,11 @@ func (c *Client) wait(ch chan *Lease, ctx context.Context, cancel context.Cancel
 }
 
 func (c *Client) sleep(ctx context.Context, timeout time.Duration) bool {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	c.conn.Block(ctx)
+
 	select {
 	case <-time.After(timeout):
 		return true

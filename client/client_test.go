@@ -1,29 +1,39 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package client_test
 
 import (
+	"context"
+	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
-	"github.com/zauberhaus/rest2dhcp/test"
-)
-
-const (
-	versionURL = "http://localhost:8080/version"
-
-	buildDate    = "2020-08-11T10:06:44NZST"
-	gitCommit    = "03fd9a8658c81c088fb548cc43b56703e6ee145b"
-	gitVersion   = "v0.0.1"
-	gitTreeState = "dirty"
+	"github.com/zauberhaus/rest2dhcp/service"
+	test_test "github.com/zauberhaus/rest2dhcp/test"
 )
 
 var (
-	host = "http://localhost:8080"
-
-	leases []*client.Lease
-	server = test.TestServer{}
+	host   = "http://localhost:8080"
+	server = test_test.TestServer{}
 )
 
 func TestMain(m *testing.M) {
@@ -31,255 +41,283 @@ func TestMain(m *testing.M) {
 }
 
 func TestClientVersion(t *testing.T) {
-	t.Parallel()
-	t.Run("VersionYaml", getVersion(client.YAML))
-	t.Run("VersionJSON", getVersion(client.YAML))
-	t.Run("VersionXML", getVersion(client.YAML))
+	testCases := []struct {
+		//Name string
+		Mime client.ContentType
+	}{
+		{
+			//Name: "XML",
+			Mime: client.XML,
+		},
+		{
+			//Name: "YAML",
+			Mime: client.YAML,
+		},
+		{
+			//Name: "JSON",
+			Mime: client.JSON,
+		},
+		{
+			//Name: "Read version via HTTP request without a content type",
+			Mime: client.Unknown,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Mime.String(), func(t *testing.T) {
+			t.Parallel()
+
+			cl := client.NewClient(host)
+			cl.ContentType = tc.Mime
+			ctx := context.Background()
+
+			version, err := cl.Version(ctx)
+			if cl.ContentType == client.Unknown {
+				clerr, ok := err.(*client.Error)
+				if !ok {
+					t.Fatalf("Unexpected error type")
+				}
+
+				assert.Equal(t, 415, clerr.Code(), "Unexpected status code")
+
+			} else if assert.NoError(t, err, "client.Version failed") {
+				if assert.NotNil(t, version, "Empty version info") {
+					if server.IsStarted() {
+						assert.Equal(t, service.Version, version, "Invalid Version info")
+					} else {
+						assert.NotEmpty(t, version.GitCommit)
+					}
+				}
+			}
+		})
+	}
 }
 
 func TestClient(t *testing.T) {
-	t.Run("LeaseYaml", getLease(client.YAML, "test-yaml", "01:02:03:04:05:06"))
-	t.Run("LeaseJSON", getLease(client.JSON, "test-json", "01:02:03:04:05:07"))
-	t.Run("LeaseXML", getLease(client.XML, "test-xml", "01:02:03:04:05:08"))
-
-	l1 := leases[0]
-	l2 := leases[2]
-	l3 := leases[4]
-
-	t.Run("RelaseAll", relaseAll())
-
-	leases = []*client.Lease{l1, l2, l3}
-
-	t.Run("RenewYaml", renew(client.YAML, 0))
-	t.Run("RenewJSON", renew(client.YAML, 1))
-	t.Run("RenewXML", renew(client.YAML, 2))
-
-	t.Run("RelaseRest", relaseAll())
-}
-
-func TestLeaseBadHostname(t *testing.T) {
-	cl := client.NewClient(host)
-	_, err := cl.Lease("test_123", nil)
-
-	clerr, ok := err.(*client.Error)
-	if !ok {
-		t.Fatalf("Unexpected error type")
+	testCases := []struct {
+		Name     string
+		Mime     client.ContentType
+		Hostname string
+		Mac      client.MAC
+	}{
+		{
+			Name:     "Run DHCP workflow via HTTP request with content type XML",
+			Mime:     client.XML,
+			Hostname: "test-xml",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+		},
+		{
+			Name:     "Run DHCP workflow via HTTP request with content type YAML",
+			Mime:     client.YAML,
+			Hostname: "test-yaml",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 7},
+		},
+		{
+			Name:     "Run DHCP workflow via HTTP request with content type JSON",
+			Mime:     client.JSON,
+			Hostname: "test-json",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 8},
+		},
+		{
+			Name:     "Run DHCP workflow via HTTP request without a content type",
+			Mime:     client.Unknown,
+			Hostname: "test-unknown",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 9},
+		},
 	}
 
-	if clerr.Code() != 400 {
-		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
-	}
-}
+	wg := sync.WaitGroup{}
+	wg.Add(len(testCases))
 
-func TestLeaseMissingHostname(t *testing.T) {
-	cl := client.NewClient(host)
-	_, err := cl.Lease("", nil)
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Name, func(t *testing.T) {
+			//t.Parallel()
 
-	clerr, ok := err.(*client.Error)
-	if !ok {
-		t.Fatalf("Unexpected error type")
-	}
+			cl := client.NewClient(host)
+			cl.ContentType = tc.Mime
 
-	if clerr.Code() != 400 {
-		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
-	}
-}
+			ctx := context.Background()
 
-func TestRenewBadHostname(t *testing.T) {
-	cl := client.NewClient(host)
-	_, err := cl.Renew("test_123", &client.MAC{net.HardwareAddr{1, 2, 3, 4, 5, 6}}, net.IP{1, 2, 3, 4})
+			lease, err := cl.Lease(ctx, tc.Hostname+"-1", nil)
 
-	clerr, ok := err.(*client.Error)
-	if !ok {
-		t.Fatalf("Unexpected error type")
-	}
+			if tc.Mime == client.Unknown {
+				clerr, ok := err.(*client.Error)
+				if !ok {
+					assert.Fail(t, "Unexpected error type")
+				}
 
-	if clerr.Code() != 400 {
-		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
-	}
-}
+				assert.Equal(t, 415, clerr.Code(), "Unexpected status code")
 
-func TestRenewMissingHostname(t *testing.T) {
-	cl := client.NewClient(host)
-	_, err := cl.Renew("", nil, nil)
-
-	clerr, ok := err.(*client.Error)
-	if !ok {
-		t.Fatalf("Unexpected error type")
-	}
-
-	if clerr.Code() != 400 {
-		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
-	}
-}
-
-func TestRenewMissingMac(t *testing.T) {
-	cl := client.NewClient(host)
-	_, err := cl.Renew("test_123", nil, nil)
-
-	clerr, ok := err.(*client.Error)
-	if !ok {
-		t.Fatalf("Unexpected error type")
-	}
-
-	if clerr.Code() != 400 {
-		t.Fatalf("Unexpected statuc code: %v - %v", clerr.Code(), clerr.Msg())
-	}
-}
-
-func getVersion(c client.ContentType) func(t *testing.T) {
-	return func(t *testing.T) {
-		cl := client.NewClient(host)
-		cl.ContentType = c
-
-		version, err := cl.Version()
-		if err != nil {
-			t.Fatalf("Version() failed: %v", err)
-		}
-
-		if version == nil {
-			t.Errorf("Invalid Version info")
-		}
-
-		if server.IsStarted() {
-			if version.BuildDate != buildDate {
-				t.Errorf("Invalid buid date %v!=%v", version.BuildDate, buildDate)
+				return
 			}
 
-			if version.GitCommit != gitCommit {
-				t.Errorf("Invalid git commit %v!=%v", version.GitCommit, gitCommit)
-			}
+			if assert.NoError(t, err) {
 
-			if version.GitVersion != gitVersion {
-				t.Errorf("Invalid git version %v!=%v", version.GitVersion, gitVersion)
-			}
+				if assert.NotNil(t, lease) && assert.NotNil(t, lease.IP) && assert.NotNil(t, lease.Mac) {
 
-			if version.GitTreeState != gitTreeState {
-				t.Errorf("Invalid git tree state %v!=%v", version.GitTreeState, gitTreeState)
-			}
-		} else {
-			if version.GitCommit == "" {
-				t.Errorf("Invalid version info:\n%v", version)
-			}
-		}
-	}
-}
+					lease2, err := cl.Lease(ctx, lease.Hostname, lease.Mac)
 
-func getLease(c client.ContentType, hostname string, addr string) func(t *testing.T) {
+					if assert.NoError(t, err) {
 
-	return func(t *testing.T) {
+						assert.Equal(t, lease2.Mac, lease.Mac)
+						assert.Equal(t, lease2.IP, lease.IP)
 
-		cl := client.NewClient(host)
-		cl.ContentType = c
+						if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
+							t.Errorf("DNS entry %s not found.", lease.Hostname)
+						}
 
-		lease, err := cl.Lease(hostname+"-1", nil)
+						lease3, err := cl.Lease(ctx, tc.Hostname+"-2", tc.Mac)
 
-		if err != nil {
-			t.Errorf("client.GetLease: %v", err)
-		}
+						if assert.NoError(t, err) {
 
-		if lease == nil {
-			t.Errorf("Empty lease")
-		}
+							assert.Equal(t, tc.Mac, lease3.Mac)
+							assert.NotEqual(t, lease.IP, lease3.IP)
 
-		if lease.IP == nil {
-			t.Errorf("Empty IP")
-		}
+							err1 := cl.Release(ctx, lease.Hostname, lease.Mac, lease.IP)
+							err2 := cl.Release(ctx, lease3.Hostname, lease3.Mac, lease3.IP)
 
-		mac := lease.Mac
+							if assert.NoError(t, err1) && assert.NoError(t, err2) {
+								if server.GetMode() == dhcp.Fritzbox {
+									time.Sleep(15 * time.Second)
 
-		lease2, err := cl.Lease(lease.Hostname, &lease.Mac)
+									assert.Equal(t, 0, checkDNS(lease), "DNS entry %s is still there.", lease.Hostname)
+									assert.Equal(t, 0, checkDNS(lease3), "DNS entry %s is still there.", lease3.Hostname)
+								}
+							}
+						}
 
-		if err != nil {
-			t.Errorf("client.GetLease: %v", err)
-		}
+						lease4, err := cl.Renew(ctx, lease.Hostname, lease.Mac, lease.IP)
+						if assert.NoError(t, err) {
+							if assert.NotNil(t, lease4) {
 
-		add(lease2)
+								assert.Equal(t, lease.Hostname, lease4.Hostname)
+								assert.Equal(t, lease.Mac, lease4.Mac)
+								assert.Equal(t, lease.IP, lease4.IP)
 
-		if lease2.Mac.String() != mac.String() {
-			t.Fatalf("Different mac addresses %v != %v", mac, lease2.Mac)
-		}
+								if server.GetMode() == dhcp.Fritzbox {
+									assert.Equal(t, 2, checkDNS(lease4), "DNS entry %s not found.", lease.Hostname)
+								}
 
-		if lease.IP.String() != lease2.IP.String() {
-			t.Fatalf("Different IP addresses %v != %v", lease.IP, lease2.IP)
-		}
-
-		if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
-			t.Errorf("DNS entry %s not found.", lease.Hostname)
-		}
-
-		mac2, err := net.ParseMAC(addr)
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-
-		lease3, err := cl.Lease(hostname+"-2", &client.MAC{mac2})
-
-		if err != nil {
-			t.Errorf("client.GetLease: %v", err)
-		}
-
-		add(lease3)
-
-		if lease3.Mac.String() != mac2.String() {
-			t.Fatalf("Got wrong mac address %v != %v", mac2, lease3.Mac)
-		}
-
-		if lease.IP.String() == lease3.IP.String() {
-			t.Fatalf("IP's shouldn't be equal %v == %v", lease.IP, lease3.IP)
-		}
-	}
-}
-
-func renew(c client.ContentType, pos int) func(t *testing.T) {
-	return func(t *testing.T) {
-		cl := client.NewClient(host)
-		cl.ContentType = c
-		l := leases[pos]
-
-		lease, err := cl.Renew(l.Hostname, &l.Mac, l.IP)
-		if err != nil {
-			t.Fatalf("client.GetLease: %v", err)
-		}
-
-		if lease == nil {
-			t.Fatalf("client.Renew: lease is empty")
-		}
-
-		if lease.Hostname != l.Hostname || lease.IP.String() != l.IP.String() || lease.Mac.String() != l.Mac.String() {
-			t.Errorf("Renewed is different")
-		}
-
-		if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
-			t.Errorf("DNS entry %s not found.", lease.Hostname)
-		}
-	}
-}
-
-func relaseAll() func(t *testing.T) {
-	return func(t *testing.T) {
-		cl := client.NewClient(host)
-
-		for _, l := range leases {
-			//fmt.Printf("Relase %s/%v/%v\n", l.Hostname, l.Mac, l.IP)
-			err := cl.Release(l.Hostname, &l.Mac, l.IP)
-
-			if err != nil {
-				t.Errorf("client.Release: %v", err)
-			}
-		}
-
-		if server.GetMode() == dhcp.Fritzbox {
-			time.Sleep(10 * time.Second)
-
-			for _, l := range leases {
-				if checkDNS(l) != 0 {
-					t.Errorf("DNS entry %s is still there.", l.Hostname)
+								err = cl.Release(ctx, lease4.Hostname, lease4.Mac, lease4.IP)
+								assert.NoError(t, err)
+							}
+						}
+					}
 				}
 			}
-		}
+			fmt.Printf("DONE %v\n", tc.Name)
+			wg.Done()
+		})
+	}
+}
 
-		leases = []*client.Lease{}
+func TestClientInvalidLease(t *testing.T) {
+	testCases := []struct {
+		Name     string
+		Hostname string
+		Mac      client.MAC
+		Code     int
+	}{
+		{
+			Name:     "Invalid hostname",
+			Hostname: "test_123",
+			Mac:      nil,
+			Code:     400,
+		},
+		{
+			Name:     "Invalid mac",
+			Hostname: "test",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6, 7},
+			Code:     400,
+		},
+		{
+			Name:     "Empty hostname",
+			Hostname: "",
+			Mac:      nil,
+			Code:     400,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			cl := client.NewClient(host)
+			_, err := cl.Lease(ctx, tc.Hostname, tc.Mac)
+
+			if assert.Error(t, err) {
+				clerr, ok := err.(*client.Error)
+				if assert.True(t, ok) {
+					assert.Equal(t, tc.Code, clerr.Code())
+				}
+			}
+		})
+	}
+}
+
+func TestClientInvalidRenew(t *testing.T) {
+	testCases := []struct {
+		Name     string
+		Hostname string
+		Mac      client.MAC
+		IP       net.IP
+		Code     int
+	}{
+		{
+			Name:     "Invalid hostname",
+			Hostname: "test_123",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			IP:       net.IP{1, 2, 3, 4},
+			Code:     400,
+		},
+		{
+			Name:     "Empty hostname",
+			Hostname: "",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			IP:       net.IP{1, 2, 3, 4},
+			Code:     400,
+		},
+		{
+			Name:     "Empty mac",
+			Hostname: "test",
+			Mac:      nil,
+			IP:       net.IP{1, 2, 3, 4},
+			Code:     400,
+		},
+		{
+			Name:     "Empty ip",
+			Hostname: "test",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			IP:       nil,
+			Code:     400,
+		},
+		{
+			Name:     "Invalid lease",
+			Hostname: "test",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			IP:       net.IP{1, 2, 3, 4},
+			Code:     400,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			cl := client.NewClient(host)
+			_, err := cl.Renew(ctx, tc.Hostname, tc.Mac, tc.IP)
+
+			if assert.Error(t, err) {
+				clerr, ok := err.(*client.Error)
+				if assert.True(t, ok) {
+					assert.Equal(t, tc.Code, clerr.Code())
+				}
+			}
+		})
 	}
 }
 
@@ -296,8 +334,4 @@ func checkDNS(l *client.Lease) int {
 	}
 
 	return 1
-}
-
-func add(l *client.Lease) {
-	leases = append(leases, l)
 }

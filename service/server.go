@@ -1,3 +1,19 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package service
 
 import (
@@ -12,7 +28,6 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -30,22 +45,19 @@ import (
 var (
 	accept = regexp.MustCompile(`application/[json|yaml]`)
 
-	ipExp  = "{ip:\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}}"
-	macExp = "{mac:(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})}"
-
 	hostnameExp = regexp.MustCompile("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$")
 
 	renewPath = map[string]string{
-		"renew": fmt.Sprintf("/ip/{hostname}/%s/%s", macExp, ipExp),
+		"renew": "/ip/{hostname}/{mac}/{ip}",
 	}
 
 	releasePath = map[string]string{
-		"release": fmt.Sprintf("/ip/{hostname}/%s/%s", macExp, ipExp),
+		"release": "/ip/{hostname}/{mac}/{ip}",
 	}
 
 	leasePath = map[string]string{
-		"get":        fmt.Sprintf("/ip/{hostname}"),
-		"getWithMac": fmt.Sprintf("/ip/{hostname}/%s", macExp),
+		"get":        "/ip/{hostname}",
+		"getWithMac": "/ip/{hostname}/{mac}",
 	}
 
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -58,12 +70,11 @@ var (
 		Help: "Counter for HTTP requests",
 	}, []string{"code"})
 
+	// Version contains the build and version info
 	Version *client.Version
-
-	// only one server can run at the same time
-	mutex sync.Mutex
 )
 
+// Server provides the REST service
 type Server struct {
 	http.Server
 	client  *dhcp.Client
@@ -72,13 +83,12 @@ type Server struct {
 	Info    *client.Version
 }
 
+// NewServer creates a new Server object
 func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionType, addr string, timeout time.Duration, dhcpTimeout time.Duration, retry time.Duration, version *client.Version) *Server {
 	server := Server{}
 	server.Addr = addr
 	server.Done = make(chan bool)
 	server.timeout = timeout
-
-	mutex.Lock()
 
 	server.client = dhcp.NewClient(local, remote, relay, mode, dhcpTimeout, retry)
 
@@ -94,13 +104,14 @@ func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionTy
 		version.DHCPServer = server.client.GetDHCPServerIP()
 		version.RelayIP = server.client.GetDHCPRelayIP()
 		version.Mode = server.client.GetDHCPRelayMode()
-		log.Printf("Version:\n%v\n", version)
 		server.Info = version
+		log.Printf("Version:\n%v\n", server.Info)
 	}
 
 	return &server
 }
 
+// RunServer is a cobra function to start the server in a cobra command
 func RunServer(cmd *cobra.Command, args []string) {
 
 	remote, _ := cmd.Flags().GetIP("server")
@@ -111,7 +122,7 @@ func RunServer(cmd *cobra.Command, args []string) {
 	dhcpTimeout, _ := cmd.Flags().GetDuration("dhcp-timeout")
 	retry, _ := cmd.Flags().GetDuration("retry")
 
-	mode := dhcp.DefaultRelay
+	mode := dhcp.AutoDetect
 
 	modetxt, _ := cmd.Flags().GetString("mode")
 	err := mode.Parse(modetxt)
@@ -138,6 +149,8 @@ func RunServer(cmd *cobra.Command, args []string) {
 	log.Println("Done.")
 }
 
+// Start starts the server
+// * @param ctx - context for a graceful shutdown
 func (s *Server) Start(ctx context.Context) {
 	go func() {
 		s.client.Start()
@@ -159,8 +172,6 @@ func (s *Server) Start(ctx context.Context) {
 		log.Print("Server stopped")
 
 		close(s.Done)
-
-		mutex.Unlock()
 	}()
 }
 
@@ -206,7 +217,7 @@ func (s *Server) setup(router *mux.Router) {
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 
-	s.write(w, &client.VersionInfo{ServiceVersion: s.Info}, contentType)
+	s.write(w, s.Info, contentType)
 }
 
 func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
@@ -220,10 +231,10 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	lease := <-s.client.GetLease(ctx, query.Hostname, query.Mac.HardwareAddr)
+	lease := <-s.client.GetLease(ctx, query.Hostname, net.HardwareAddr(query.Mac))
 
 	if lease == nil {
-		HTTPError(w, http.StatusRequestTimeout)
+		httpError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -232,11 +243,9 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := client.Result{
-		Lease: client.NewLease(query.Hostname, *lease.DHCP4),
-	}
-
+	result := client.NewLease(query.Hostname, *lease.DHCP4)
 	contentType := client.ContentType(r.Context().Value(Content).(string))
+
 	s.write(w, result, contentType)
 }
 
@@ -250,10 +259,10 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	lease := <-s.client.ReNew(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
+	lease := <-s.client.ReNew(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
 
 	if lease == nil {
-		HTTPError(w, http.StatusRequestTimeout)
+		httpError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -262,10 +271,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := client.Result{
-		Lease: client.NewLease(query.Hostname, *lease.DHCP4),
-	}
-
+	result := client.NewLease(query.Hostname, *lease.DHCP4)
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
@@ -279,10 +285,10 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	lease := <-s.client.Release(ctx, query.Hostname, query.Mac.HardwareAddr, query.IP)
+	lease := <-s.client.Release(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
 
 	if lease != nil {
-		HTTPError(w, http.StatusRequestTimeout)
+		httpError(w, http.StatusRequestTimeout)
 		return
 	}
 
@@ -326,6 +332,7 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t client.Conten
 	return fmt.Errorf("Unknown content format: %v", t)
 }
 
+// ContentMiddleware returns a gorilla mux middleware to check the Accept HTTP header and set a context value
 func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		content := r.Header.Get("Accept")
@@ -343,11 +350,12 @@ func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
-			HTTPError(w, http.StatusUnsupportedMediaType)
+			httpError(w, http.StatusUnsupportedMediaType)
 		}
 	})
 }
 
+// PrometheusMiddleware returns a gorilla mux middleware to measure the execution time as prometheus metrics
 func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := mux.CurrentRoute(r)
@@ -357,10 +365,11 @@ func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// CounterMiddleware returns a gorilla mux middleware to count requests as prometheus metrics
 func (s *Server) CounterMiddleware(next http.Handler) http.Handler {
 	return promhttp.InstrumentHandlerCounter(httpCounter, next)
 }
 
-func HTTPError(w http.ResponseWriter, code int) {
+func httpError(w http.ResponseWriter, code int) {
 	http.Error(w, http.StatusText(code), code)
 }

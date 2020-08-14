@@ -1,3 +1,19 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package service_test
 
 import (
@@ -7,8 +23,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/client"
-	"github.com/zauberhaus/rest2dhcp/test"
+	"github.com/zauberhaus/rest2dhcp/service"
+	test_test "github.com/zauberhaus/rest2dhcp/test"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,7 +42,7 @@ const (
 )
 
 var (
-	server = test.TestServer{}
+	server = test_test.TestServer{}
 )
 
 func TestMain(m *testing.M) {
@@ -138,32 +156,14 @@ func TestVersion(t *testing.T) {
 				t.Fatalf("%v", err)
 			}
 
-			var version client.VersionInfo
+			var version client.Version
 			unmarshal(t, data, &version, mime)
 
-			if version.ServiceVersion == nil {
-				t.Errorf("Invalid Version info")
-			}
-
 			if server.IsStarted() {
-				if version.ServiceVersion.BuildDate != buildDate {
-					t.Errorf("Invalid buid date %v!=%v", version.ServiceVersion.BuildDate, buildDate)
-				}
-
-				if version.ServiceVersion.GitCommit != gitCommit {
-					t.Errorf("Invalid git commit %v!=%v", version.ServiceVersion.GitCommit, gitCommit)
-				}
-
-				if version.ServiceVersion.GitVersion != gitVersion {
-					t.Errorf("Invalid git version %v!=%v", version.ServiceVersion.GitVersion, gitVersion)
-				}
-
-				if version.ServiceVersion.GitTreeState != gitTreeState {
-					t.Errorf("Invalid git tree state %v!=%v", version.ServiceVersion.GitTreeState, gitTreeState)
-				}
+				assert.Equal(t, service.Version, &version, "Invalid Version info")
 			} else {
-				if version.ServiceVersion.GitCommit == "" {
-					t.Errorf("Invalid version info:\n%v", string(data))
+				if version.GitCommit == "" {
+					t.Errorf("Invalid version info:\n%v", version)
 				}
 			}
 		})
@@ -211,7 +211,7 @@ func request(t *testing.T, method string, url string, mime client.ContentType) *
 	return resp
 }
 
-func checkResult(t *testing.T, resp *http.Response, hostname string, mime client.ContentType) *client.Result {
+func checkResult(t *testing.T, resp *http.Response, hostname string, mime client.ContentType) *client.Lease {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Wrong http status: %v", resp.Status)
 	}
@@ -230,7 +230,7 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime client
 		t.Fatalf("%v", err)
 	}
 
-	var result client.Result
+	var result client.Lease
 	unmarshal(t, data, &result, mime)
 
 	if result.Hostname != hostname {
@@ -241,7 +241,7 @@ func checkResult(t *testing.T, resp *http.Response, hostname string, mime client
 		t.Fatalf("Invalid return ip")
 	}
 
-	if result.Mac.HardwareAddr == nil {
+	if result.Mac == nil {
 		t.Fatalf("Empty mac")
 	}
 

@@ -1,3 +1,19 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main_test
 
 import (
@@ -15,8 +31,7 @@ import (
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/cmd"
 	"github.com/zauberhaus/rest2dhcp/service"
-	"github.com/zauberhaus/rest2dhcp/test"
-	"github.com/zbiljic/go-filelock"
+	test_test "github.com/zauberhaus/rest2dhcp/test"
 	"gopkg.in/yaml.v2"
 )
 
@@ -25,7 +40,7 @@ func TestRunVersion(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	service.Version = client.NewVersion(test.BuildDate, test.GitCommit, test.GitVersion, test.GitTreeState)
+	service.Version = test_test.NewTestVersion()
 	cmd.VersionCmd.Run(nil, nil)
 
 	outC := make(chan []byte)
@@ -41,32 +56,22 @@ func TestRunVersion(t *testing.T) {
 	os.Stdout = old // restoring the real stdout
 	out := <-outC
 
-	var info client.VersionInfo
+	var info client.Version
 	err := yaml.Unmarshal(out, &info)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assert.NotNil(t, info.ServiceVersion, "info.ServiceVersion is empty")
-	assert.Equal(t, info.ServiceVersion, service.Version, "Invalid value")
+	assert.Equal(t, &info, service.Version, "Invalid value")
 }
 
 func TestRunServer(t *testing.T) {
 	pid := syscall.Getpid()
 	done := make(chan bool)
 
-	service.Version = client.NewVersion("", "", "", "")
+	service.Version = test_test.NewTestVersion()
 
-	fl, err := filelock.New("/tmp/rest2dhcp-lock")
-	if err != nil {
-		panic(err)
-	}
-
-	err = fl.Lock()
-	if err != nil {
-		panic(err)
-	}
-
+	fl := test_test.NewServerLock()
 	defer fl.Unlock()
 
 	go func() {
@@ -92,17 +97,14 @@ func TestRunServer(t *testing.T) {
 		t.Fatalf("Can't read version: %s", err)
 	}
 
-	var info client.VersionInfo
+	var info client.Version
 	err = yaml.Unmarshal(data, &info)
 	if err != nil {
 		fmt.Println(string(data))
 		t.Fatalf("Invalid version info: %s", err)
 	}
 
-	if info.ServiceVersion == nil || info.ServiceVersion.GoVersion == "" {
-		fmt.Println(string(data))
-		t.Fatal("Empty version info")
-	}
+	assert.Equal(t, &info, service.Version, "Invalid version info")
 
 	fmt.Printf("Send SIGINT to %v", pid)
 	syscall.Kill(pid, syscall.SIGINT)

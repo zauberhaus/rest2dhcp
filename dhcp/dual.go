@@ -1,6 +1,23 @@
+/*
+Copyright © 2020 Dirk Lembke <dirk@lembke.nz>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package dhcp
 
 import (
+	"context"
 	"log"
 	"net"
 	"sync"
@@ -10,6 +27,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+// DualConn is a udp listener on a local port and a packet connection to use free src port for outgoing messages
 type DualConn struct {
 	out net.PacketConn
 	in  *net.UDPConn
@@ -24,6 +42,7 @@ type DualConn struct {
 	cnt     int
 }
 
+// NewDualConn initialises a new connection
 func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connection {
 
 	out, err := net.ListenPacket("ip4:udp", local.IP.String())
@@ -50,6 +69,7 @@ func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connecti
 	}
 }
 
+// Close the connection
 func (c *DualConn) Close() error {
 	log.Printf("Close packet listener %s", c.out.LocalAddr().String())
 	err1 := c.in.Close()
@@ -64,14 +84,17 @@ func (c *DualConn) Close() error {
 
 }
 
+// Local returns the local udp address
 func (c *DualConn) Local() *net.UDPAddr {
 	return c.local
 }
 
+// Remote returns the remote udp address
 func (c *DualConn) Remote() *net.UDPAddr {
 	return c.remote
 }
 
+// Send a DHCP data packet
 func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 	chan1 := make(chan int)
 	chan2 := make(chan error)
@@ -89,7 +112,7 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 			DstPort: layers.UDPPort(67),
 		}
 
-		c.cnt++
+		log.Printf("Use port: %v", uint16(udp.SrcPort))
 
 		udp.SetNetworkLayerForChecksum(ip)
 
@@ -122,6 +145,7 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 	return chan1, chan2
 }
 
+// Receive a DHCP data packet
 func (c *DualConn) Receive() (chan *DHCP4, chan error) {
 	chan1 := make(chan *DHCP4)
 	chan2 := make(chan error)
@@ -157,13 +181,28 @@ func (c *DualConn) getPort() layers.UDPPort {
 		return 68
 	}
 
-	if c.cnt == 0 {
-		port := 67
-		now := time.Now()
-		c.cnt = port + now.Second()*100 + now.Nanosecond()/10000000
+	if c.cnt < 1 || c.cnt > 60000 {
+		c.cnt = 1
+		//port := 1
+		//now := time.Now()
+		//c.cnt = port + now.Second()*100 + now.Nanosecond()/10000000
 	} else {
 		c.cnt++
 	}
 
 	return layers.UDPPort(c.cnt)
+}
+
+// Block outgoing traffic until contect is finished
+func (c *DualConn) Block(ctx context.Context) chan bool {
+	rc := make(chan bool)
+
+	go func() {
+		c.outmux.Lock()
+		defer c.outmux.Unlock()
+		<-ctx.Done()
+		close(rc)
+	}()
+
+	return rc
 }
