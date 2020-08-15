@@ -219,7 +219,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
 	defer cancel()
 
-	lease := <-s.client.ReNew(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
+	lease := <-s.client.Renew(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
 
 	if lease == nil {
 		httpError(w, http.StatusRequestTimeout)

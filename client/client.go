@@ -34,7 +34,7 @@ type Client struct {
 	ContentType ContentType
 }
 
-// NewClient initialises a new client
+// NewClient initializes a new client
 // * @param url - url of the service
 func NewClient(url string) *Client {
 	return &Client{
