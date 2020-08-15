@@ -3,7 +3,7 @@ module github.com/zauberhaus/rest2dhcp
 go 1.14
 
 require (
-	github.com/fsnotify/fsnotify v1.4.7
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/google/gopacket v1.1.18
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4

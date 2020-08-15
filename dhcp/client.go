@@ -266,7 +266,8 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 			lease2 = c.wait(ch, ctx2, cancel)
 
 			if lease2 != nil {
-				log.Printf("DHCP Request finished (%v)", lease2.YourClientIP)
+				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
+				c.store.Remove(lease2.Xid)
 				break
 			} else {
 				log.Printf("Timeout, wait %v", c.retry)
@@ -307,7 +308,8 @@ func (c *Client) ReNew(ctx context.Context, hostname string, haddr net.HardwareA
 			lease2 = c.wait(ch, ctx2, cancel)
 
 			if lease2 != nil {
-				log.Printf("DHCP Request finished (%v)", lease2.YourClientIP)
+				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
+				c.store.Remove(lease2.Xid)
 				break
 			} else {
 				log.Printf("Timeout, wait %v", c.retry)

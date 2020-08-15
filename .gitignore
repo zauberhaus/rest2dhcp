@@ -5,6 +5,7 @@
 *.so
 *.dylib
 rest2dhcp
+setenv
 
 # Test binary, built with `go test -c`
 *.test

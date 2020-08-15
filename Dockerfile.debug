@@ -1,0 +1,19 @@
+FROM golang:alpine
+
+RUN apk update && apk --no-cache upgrade && apk add --no-cache git
+RUN go get github.com/go-delve/delve/cmd/dlv
+
+ENV SRC /go/src/github.com/zauberhaus/rest2dhcp
+ENV CGO_ENABLED 0
+ENV REMOTE ""
+ENV LOCAL ""
+ENV RELAY ""
+ENV MODE "auto"
+
+COPY go.mod /
+RUN cd / && go mod download
+
+RUN ln -s $SRC /src
+WORKDIR /src
+
+CMD /go/bin/dlv debug --api-version=2 --headless --listen=:2345 --log -- -s $REMOTE -c $LOCAL -r $RELAY -m $MODE
