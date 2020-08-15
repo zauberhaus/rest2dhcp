@@ -26,6 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Connection is an interface for a DHCP connection
 type Connection interface {
 	Close() error
 	Send(dhcp *DHCP4) (chan int, chan error)
@@ -36,8 +37,10 @@ type Connection interface {
 	Block(ctx context.Context) chan bool
 }
 
+// ConnectionType is enumeration of teh connection types
 type ConnectionType string
 
+// Existing connection types
 const (
 	AutoDetect   ConnectionType = "auto"
 	DefaultRelay ConnectionType = "udp"
@@ -46,6 +49,7 @@ const (
 	BrokenRelay  ConnectionType = "broken"
 )
 
+// AllConnectionTypes is a list of all possible connection types
 var AllConnectionTypes = []string{
 	AutoDetect.String(),
 	DefaultRelay.String(),
@@ -58,6 +62,7 @@ func (c ConnectionType) String() string {
 	return string(c)
 }
 
+// Parse a string
 func (c *ConnectionType) Parse(txt string) error {
 	switch txt {
 	case string(AutoDetect):
@@ -78,10 +83,12 @@ func (c *ConnectionType) Parse(txt string) error {
 	return nil
 }
 
+// UnmarshalYAML custom unmarshal for YAMLv3
 func (c *ConnectionType) UnmarshalYAML(value *yaml.Node) error {
 	return c.Parse(value.Value)
 }
 
+// UnmarshalJSON custom unmarshal for JSON
 func (c *ConnectionType) UnmarshalJSON(b []byte) error {
 	var txt string
 	err := json.Unmarshal(b, &txt)
@@ -93,6 +100,7 @@ func (c *ConnectionType) UnmarshalJSON(b []byte) error {
 	return c.Parse(txt)
 }
 
+// UnmarshalXML custom unmarshal for XML
 func (c *ConnectionType) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	var txt string
 	if err := d.DecodeElement(&txt, &start); err != nil {
@@ -102,14 +110,17 @@ func (c *ConnectionType) UnmarshalXML(d *xml.Decoder, start xml.StartElement) er
 	return c.Parse(txt)
 }
 
+// MarshalYAML custom marshal for YAMLv3
 func (c *ConnectionType) MarshalYAML() (interface{}, error) {
 	return c.String(), nil
 }
 
+// MarshalJSON custom marshal for JSON
 func (c *ConnectionType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.String())
 }
 
+// MarshalXML custom marshal for XML
 func (c *ConnectionType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(c.String(), start)
 }

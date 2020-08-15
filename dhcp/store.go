@@ -25,6 +25,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+//LeaseStoreItem describes a lease store item
 type LeaseStoreItem struct {
 	lease   *Lease
 	expire  time.Time
@@ -32,6 +33,7 @@ type LeaseStoreItem struct {
 	status  layers.DHCPMsgType
 }
 
+// LeaseStore is thread-safe store for temporary DHCP lease packets with a TTL
 type LeaseStore struct {
 	store  map[uint32]*LeaseStoreItem
 	mutex  sync.RWMutex
@@ -39,6 +41,7 @@ type LeaseStore struct {
 	checks time.Duration
 }
 
+// NewStore creates a new lease store
 func NewStore(ttl time.Duration) *LeaseStore {
 	return &LeaseStore{
 		store:  make(map[uint32]*LeaseStoreItem),
@@ -47,6 +50,7 @@ func NewStore(ttl time.Duration) *LeaseStore {
 	}
 }
 
+// Set or add a lease to the store
 func (l *LeaseStore) Set(lease *Lease) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
@@ -63,6 +67,7 @@ func (l *LeaseStore) Set(lease *Lease) {
 	}
 }
 
+// Get a value from the store
 func (l *LeaseStore) Get(xid uint32) (*Lease, bool) {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
@@ -70,11 +75,12 @@ func (l *LeaseStore) Get(xid uint32) (*Lease, bool) {
 	val, ok := l.store[xid]
 	if ok && val != nil {
 		return val.lease, ok
-	} else {
-		return nil, ok
 	}
+
+	return nil, ok
 }
 
+// Has checks if a xid is in the store
 func (l *LeaseStore) Has(xid uint32) bool {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
@@ -84,6 +90,7 @@ func (l *LeaseStore) Has(xid uint32) bool {
 	return ok
 }
 
+// Remove a value from the store
 func (l *LeaseStore) Remove(xid uint32) bool {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
@@ -97,6 +104,7 @@ func (l *LeaseStore) Remove(xid uint32) bool {
 	return false
 }
 
+// Touch extends the expire time of an entry
 func (l *LeaseStore) Touch(xid uint32) bool {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
@@ -128,6 +136,7 @@ func (l *LeaseStore) outdated() []uint32 {
 	return outdated
 }
 
+// Clean removes outdated entries from the store
 func (l *LeaseStore) Clean() {
 	outdated := l.outdated()
 
@@ -145,6 +154,7 @@ func (l *LeaseStore) Clean() {
 	}
 }
 
+// Run the process to clean the store periodically
 func (l *LeaseStore) Run(ctx context.Context) {
 	go func() {
 		log.Printf("Start LeaseStore clean up process (%v)", l.checks)

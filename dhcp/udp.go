@@ -32,7 +32,7 @@ type UDPConn struct {
 	outmux sync.Mutex
 }
 
-// NewUDPConn initialises a new udp connection
+// NewUDPConn initializes a new udp connection
 func NewUDPConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
 	sc, err := net.DialUDP("udp4", local, remote)
 	if err != nil {
@@ -71,7 +71,7 @@ func (c *UDPConn) Send(dhcp *DHCP4) (chan int, chan error) {
 		c.outmux.Lock()
 		defer c.outmux.Unlock()
 
-		buf := dhcp.Serialize()
+		buf := dhcp.serialize()
 		i, err := c.conn.Write(buf)
 		if err != nil {
 			chan2 <- err

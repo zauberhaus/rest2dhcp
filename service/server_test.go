@@ -57,7 +57,7 @@ func TestService(t *testing.T) {
 	}{
 		{
 			Name:     "Test workflow via HTTP request with content type XML",
-			Hostname: "srever-test-xml",
+			Hostname: "server-test-xml",
 			Mime:     client.XML,
 		},
 		{
@@ -92,7 +92,7 @@ func TestService(t *testing.T) {
 			result2 := checkResult(t, resp2, hostname, mime)
 
 			if result.IP.String() != result2.IP.String() {
-				t.Fatalf("Different IP's %v != %v", result.IP, result2.IP)
+				t.Fatalf("Different IPs %v != %v", result.IP, result2.IP)
 			}
 
 			resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)

@@ -199,7 +199,7 @@ func TestRunServerEnv(t *testing.T) {
 			<-done
 			fmt.Println("Done.")
 
-			for k, _ := range tc.Env {
+			for k := range tc.Env {
 				os.Unsetenv(k)
 			}
 

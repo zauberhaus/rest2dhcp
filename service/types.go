@@ -81,7 +81,7 @@ func NewQuery(request *http.Request) (*Query, error) {
 	return &query, nil
 }
 
-// ServerConfig describes the server configuartion
+// ServerConfig describes the server configuration
 type ServerConfig struct {
 	Local       net.IP              `yaml:"local,omitempty" json:"local,omitempty" xml:"local,omitempty"`
 	Remote      net.IP              `yaml:"remote,omitempty" json:"remote,omitempty" xml:"remote,omitempty"`

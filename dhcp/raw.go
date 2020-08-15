@@ -38,7 +38,7 @@ type RawConn struct {
 	outmux sync.Mutex
 }
 
-// NewRawConn initialises a new connection
+// NewRawConn initializes a new connection
 func NewRawConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
 
 	out, err := net.ListenPacket("ip4:udp", local.IP.String())
@@ -191,7 +191,7 @@ func (c *RawConn) serialize(dhcp *layers.DHCPv4) []byte {
 	return buf.Bytes()
 }
 
-// Block outgoing traffic until contect is finished
+// Block outgoing traffic until context is finished
 func (c *RawConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
 

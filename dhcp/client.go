@@ -54,7 +54,7 @@ var (
 	htable = crc64.MakeTable(crc64.ECMA)
 )
 
-// NewClient initialise a new client
+// NewClient initialize a new client
 func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionType, timeout time.Duration, retry time.Duration) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -146,7 +146,7 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 			Port: 67,
 		})
 	default:
-		log.Fatalf("Unkown connection type: %v", connType)
+		log.Fatalf("Unknown connection type: %v", connType)
 	}
 
 	log.Printf("Use %v connection", connType)
@@ -208,24 +208,26 @@ func (c *Client) Stop() error {
 	return c.conn.Close()
 }
 
+// GetDHCPServerIP returns the current server IP
 func (c *Client) GetDHCPServerIP() net.IP {
 	return c.remote.To16()
 }
 
+// GetDHCPRelayIP returns the current relay IP
 func (c *Client) GetDHCPRelayIP() net.IP {
 	return c.relay.To16()
 }
 
+// GetDHCPRelayMode returns the current connection mode
 func (c *Client) GetDHCPRelayMode() ConnectionType {
 	return c.mode
 }
 
-/* GetLease request a new lease with given hostname and mac address
-* @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-* @param hostname Hostname
-* @param mac Mac address
-* @param ip IP of lease request
- */
+// GetLease requests a new lease with given hostname and mac address
+// @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+// @param hostname Hostname
+// @param mac Mac address
+// @param ip IP address
 func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.HardwareAddr) chan *Lease {
 	chan1 := make(chan *Lease)
 
@@ -238,9 +240,9 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 		var lease2 *Lease
 
 		for {
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.discover(ctx2, c.conn, hostname, haddr, nil)
-			lease = c.wait(ch, ctx2, cancel)
+			ctx, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.discover(ctx, c.conn, hostname, haddr, nil)
+			lease = c.wait(ctx, ch, cancel)
 
 			if lease != nil {
 				log.Printf("DHCP Discover finished (%v)", lease.YourClientIP)
@@ -261,9 +263,9 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 		}
 
 		for {
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ch, ctx2, cancel)
+			ctx, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.request(ctx, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(ctx, ch, cancel)
 
 			if lease2 != nil {
 				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
@@ -285,7 +287,12 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 	return chan1
 }
 
-func (c *Client) ReNew(ctx context.Context, hostname string, haddr net.HardwareAddr, ip net.IP) chan *Lease {
+// Renew a lease
+// @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+// @param hostname Hostname
+// @param mac Mac address
+// @param ip IP address
+func (c *Client) Renew(ctx context.Context, hostname string, haddr net.HardwareAddr, ip net.IP) chan *Lease {
 	chan1 := make(chan *Lease)
 
 	if haddr == nil {
@@ -303,9 +310,9 @@ func (c *Client) ReNew(ctx context.Context, hostname string, haddr net.HardwareA
 				lease.SetHostname(hostname)
 			}
 
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ch, ctx2, cancel)
+			ctx, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.request(ctx, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(ctx, ch, cancel)
 
 			if lease2 != nil {
 				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
@@ -327,6 +334,11 @@ func (c *Client) ReNew(ctx context.Context, hostname string, haddr net.HardwareA
 	return chan1
 }
 
+// Release a lease
+// @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+// @param hostname Hostname
+// @param mac Mac address
+// @param ip IP address
 func (c *Client) Release(ctx context.Context, hostname string, haddr net.HardwareAddr, ip net.IP) chan error {
 	chan1 := make(chan error)
 
@@ -477,7 +489,7 @@ func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
 		byte(0xff & (h >> 40))}
 }
 
-func (c *Client) wait(ch chan *Lease, ctx context.Context, cancel context.CancelFunc) *Lease {
+func (c *Client) wait(ctx context.Context, ch chan *Lease, cancel context.CancelFunc) *Lease {
 	defer cancel()
 
 	select {

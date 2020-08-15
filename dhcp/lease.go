@@ -27,10 +27,12 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+// DHCP4 extends layers.DHCPv4 with helper functions
 type DHCP4 struct {
 	*layers.DHCPv4
 }
 
+// Lease extends DHCP4 with extra fields and an error
 type Lease struct {
 	*DHCP4
 	Timestamp time.Time
@@ -39,6 +41,7 @@ type Lease struct {
 	err       error
 }
 
+// NewLease creates a lease object
 func NewLease(msgType layers.DHCPMsgType, xid uint32, chaddr net.HardwareAddr, options layers.DHCPOptions) *Lease {
 	dhcp := NewPackage(msgType, xid, chaddr, options)
 
@@ -48,6 +51,7 @@ func NewLease(msgType layers.DHCPMsgType, xid uint32, chaddr net.HardwareAddr, o
 	}
 }
 
+// NewPackage creates a DHCPv4 package
 func NewPackage(msgType layers.DHCPMsgType, xid uint32, chaddr net.HardwareAddr, options layers.DHCPOptions) *DHCP4 {
 	if xid == 0 {
 		xid = GenerateXID()
@@ -80,6 +84,7 @@ func NewPackage(msgType layers.DHCPMsgType, xid uint32, chaddr net.HardwareAddr,
 	}
 }
 
+// NewLeaseError creates an empty lease with an error
 func NewLeaseError(err error) *Lease {
 	return &Lease{
 		DHCP4: nil,
@@ -92,18 +97,22 @@ func (l *Lease) Error() error {
 	return l.err
 }
 
+// SetError adds an error
 func (l *Lease) SetError(err error) {
 	l.err = err
 }
 
+// Ok returns false if there is an error
 func (l *Lease) Ok() bool {
 	return l.err == nil
 }
 
+// Touch updates the timestamp
 func (l *Lease) Touch() {
 	l.Timestamp = time.Now()
 }
 
+// CheckResponseType checks if a new status is allowed
 func (l *Lease) CheckResponseType(dhcp *DHCP4) bool {
 	old := l.GetMsgType()
 	new := dhcp.GetMsgType()
@@ -119,10 +128,12 @@ func (l *Lease) CheckResponseType(dhcp *DHCP4) bool {
 	return false
 }
 
+// SetMsgType sets the DHCP message type option
 func (d *DHCP4) SetMsgType(msgType layers.DHCPMsgType) {
 	d.SetOption(layers.DHCPOptMessageType, []byte{uint8(msgType)})
 }
 
+// GetMsgType returns the DHCP message type option
 func (d *DHCP4) GetMsgType() layers.DHCPMsgType {
 	o := d.GetOption(layers.DHCPOptMessageType)
 	if o == nil {
@@ -132,6 +143,7 @@ func (d *DHCP4) GetMsgType() layers.DHCPMsgType {
 	return layers.DHCPMsgType(o.Data[0])
 }
 
+// GetOption returns a requested DHCP option
 func (d *DHCP4) GetOption(option layers.DHCPOpt) *layers.DHCPOption {
 
 	for _, v := range d.Options {
@@ -143,7 +155,24 @@ func (d *DHCP4) GetOption(option layers.DHCPOpt) *layers.DHCPOption {
 	return nil
 }
 
-func (d *DHCP4) FindOption(option layers.DHCPOpt) int {
+// SetOption sets a DHCP option
+func (d *DHCP4) SetOption(opt layers.DHCPOpt, data []byte) {
+
+	pos := d.findOption(opt)
+
+	if pos >= 0 {
+		d.Options[pos].Data = data
+		d.Options[pos].Length = uint8(len(data))
+	} else {
+		d.Options = append(d.Options, layers.DHCPOption{
+			Type:   opt,
+			Data:   data,
+			Length: uint8(len(data)),
+		})
+	}
+}
+
+func (d *DHCP4) findOption(option layers.DHCPOpt) int {
 
 	for i, v := range d.Options {
 		if v.Type == option {
@@ -154,6 +183,7 @@ func (d *DHCP4) FindOption(option layers.DHCPOpt) int {
 	return -1
 }
 
+// GetExpireTime return the option layers.DHCPOptLeaseTime
 func (d *DHCP4) GetExpireTime() time.Time {
 
 	expire := time.Now()
@@ -167,6 +197,7 @@ func (d *DHCP4) GetExpireTime() time.Time {
 	return expire
 }
 
+// GetRebindTime return the option layers.DHCPOptT2
 func (d *DHCP4) GetRebindTime() time.Time {
 
 	renewal := time.Now()
@@ -186,6 +217,7 @@ func (d *DHCP4) GetRebindTime() time.Time {
 	return renewal
 }
 
+// GetRenewalTime return the option layers.DHCPOptT1
 func (d *DHCP4) GetRenewalTime() time.Time {
 
 	renewal := time.Now()
@@ -205,6 +237,7 @@ func (d *DHCP4) GetRenewalTime() time.Time {
 	return renewal
 }
 
+// GetSubnetMask return the option layers.DHCPOptSubnetMask
 func (d *DHCP4) GetSubnetMask() net.IP {
 	o := d.GetOption(layers.DHCPOptSubnetMask)
 	if o != nil && o.Length == 4 {
@@ -214,6 +247,7 @@ func (d *DHCP4) GetSubnetMask() net.IP {
 	return nil
 }
 
+// GetDNS return the option layers.DHCPOptDNS
 func (d *DHCP4) GetDNS() net.IP {
 	o := d.GetOption(layers.DHCPOptDNS)
 	if o != nil && o.Length == 4 {
@@ -223,6 +257,7 @@ func (d *DHCP4) GetDNS() net.IP {
 	return nil
 }
 
+// GetRouter return the option layers.DHCPOptRouter
 func (d *DHCP4) GetRouter() net.IP {
 	o := d.GetOption(layers.DHCPOptRouter)
 	if o != nil && o.Length == 4 {
@@ -232,23 +267,7 @@ func (d *DHCP4) GetRouter() net.IP {
 	return nil
 }
 
-func (d *DHCP4) SetOption(opt layers.DHCPOpt, data []byte) {
-
-	pos := d.FindOption(opt)
-
-	if pos >= 0 {
-		d.Options[pos].Data = data
-		d.Options[pos].Length = uint8(len(data))
-	} else {
-		d.Options = append(d.Options, layers.DHCPOption{
-			Type:   opt,
-			Data:   data,
-			Length: uint8(len(data)),
-		})
-	}
-}
-
-func (d *DHCP4) Serialize() []byte {
+func (d *DHCP4) serialize() []byte {
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		ComputeChecksums: true,
@@ -268,15 +287,18 @@ func (d *DHCP4) Serialize() []byte {
 	return buf.Bytes()
 }
 
+// SetHostname sets the DHCP option layers.DHCPOptHostname
 func (d *DHCP4) SetHostname(hostname string) {
 	d.SetOption(layers.DHCPOptHostname, []byte(hostname))
 }
 
+// SetHostname sets the DHCP option layers.DHCPOptHostname and the hostname field
 func (l *Lease) SetHostname(hostname string) {
 	l.Hostname = hostname
 	l.DHCP4.SetHostname(hostname)
 }
 
+// GetRequest creates a DHCP request out of an lease
 func (l *Lease) GetRequest(msgType layers.DHCPMsgType, options layers.DHCPOptions) *DHCP4 {
 	lease := NewPackage(msgType, l.Xid, l.ClientHWAddr, options)
 
@@ -299,6 +321,7 @@ func (l *Lease) GetRequest(msgType layers.DHCPMsgType, options layers.DHCPOption
 	return lease
 }
 
+// GenerateXID generates a random uint32 value
 func GenerateXID() uint32 {
 	buf := make([]byte, 4)
 	if _, err := cryptorand.Read(buf); err != nil {

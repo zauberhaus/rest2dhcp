@@ -71,7 +71,7 @@ type Lease struct {
 	Expire   time.Time `json:"expire" xml:"expire"`
 }
 
-// NewLease initialises a new lease object from a DHCP package
+// NewLease initializes a new lease object from a DHCP package
 func NewLease(hostname string, d dhcp.DHCP4) *Lease {
 	return &Lease{
 		Hostname: hostname,
@@ -86,13 +86,13 @@ func NewLease(hostname string, d dhcp.DHCP4) *Lease {
 	}
 }
 
-// Error implementation wird status code
+// Error implementation with status code
 type Error struct {
 	msg  string
 	code int
 }
 
-// NewError intitialises a new error object
+// NewError initializes a new error object
 func NewError(code int, msg string) *Error {
 	return &Error{
 		msg:  msg,
@@ -114,8 +114,10 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("(%v %s) %s", e.code, http.StatusText(e.code), e.msg)
 }
 
+// MAC extends net.HardwareAddr with XML, YAML and JSON converter
 type MAC net.HardwareAddr
 
+// UnmarshalYAML custom unmarshal for YAMLv3
 func (m *MAC) UnmarshalYAML(value *yaml.Node) error {
 	mac, err := net.ParseMAC(value.Value)
 	if err == nil {
@@ -125,6 +127,7 @@ func (m *MAC) UnmarshalYAML(value *yaml.Node) error {
 	return err
 }
 
+// UnmarshalJSON custom unmarshal for JSON
 func (m *MAC) UnmarshalJSON(b []byte) error {
 	var txt string
 	err := json.Unmarshal(b, &txt)
@@ -141,6 +144,7 @@ func (m *MAC) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// UnmarshalXML custom unmarshal for XML
 func (m *MAC) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	var txt string
 	if err := d.DecodeElement(&txt, &start); err != nil {
@@ -155,14 +159,17 @@ func (m *MAC) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return err
 }
 
+// MarshalYAML custom marshal for YAMLv3
 func (m MAC) MarshalYAML() (interface{}, error) {
 	return m.String(), nil
 }
 
+// MarshalJSON custom marshal for JSON
 func (m MAC) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.String())
 }
 
+// MarshalXML custom marshal for XML
 func (m MAC) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(m.String(), start)
 }
@@ -171,6 +178,7 @@ func (m MAC) String() string {
 	return net.HardwareAddr(m).String()
 }
 
+// Version is the response object the version request
 type Version struct {
 	BuildDate    string              `yaml:"buildDate,omitempty" json:"buildDate,omitempty" xml:"buildDate,omitempty"`
 	Compiler     string              `yaml:"compiler" json:"compiler" xml:"compiler"`
@@ -189,6 +197,7 @@ func (v *Version) String() string {
 	return string(data)
 }
 
+// NewVersion creates a new version object
 func NewVersion(buildDate string, gitCommit string, tag string, treeState string) *Version {
 	return &Version{
 		BuildDate:    buildDate,
