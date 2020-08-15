@@ -1,8 +1,8 @@
 # rest2dhcp
 
 
-A REST webservice gateway to a DHCP server
-The service acts as an REST webservice for clients and as an DHCP relay to the DHCP server.
+A REST web service gateway to a DHCP server
+The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.
 Therefore, it's possible to request IPs for more than one hostname or MAC address.
 ```
 Usage:
@@ -43,17 +43,17 @@ Flags:
 ## Connection Mode
 
 Unfortunately, the DHCP relay implementations are often very buggy or have some strange DoS protections.
-The gateway has 4 different implementations for the DHCP connection and a auto detection.
+The gateway has four different implementations for the DHCP connection and an auto-detection.
 
 | Mode      | Description                               |
 |-----------|-------------------------------------------|
-| auto      | A very simple auto detection (only for development and testing) |
-| udp       | A udp connection using port 67 for incoming and outgoing traffic (Openwrt) |
-| packet    | Like the udp connection, but with a udo packet connection for outgoing traffic |
-| fritzbox  | A udp packet connection sending DHCP packages with increasing src ports to port 67 and a udp listener on port 67 (Fritz!Box 7590) |   
-| broken    | A packer listener using port 68 for incoming and port 67 for outgoing traffic (Android WiFi hotspot) |
+| auto      | A very simple auto-detection (only for development and testing) |
+| udp       | A UDP connection using port 67 for incoming and outgoing traffic (Openwrt) |
+| packet    | Like the UDP connection, but with a UDP packet connection for outgoing traffic |
+| fritzbox  | A UDP packet connection sending DHCP packages with increasing src ports to port 67 and a UDP listener on port 67 (Fritz!Box 7590) |   
+| broken    | A packet listener using port 68 for incoming and port 67 for outgoing traffic (Android WiFi hotspot) |
 
-Openwrt needs a very long time to respond on an IP request for a unknown host. It seems to be part of the DoS protection.
+Openwrt needs a very long time to respond on an IP request for an unknown host. It seems to be part of the DoS protection.
 
 ## Build
 

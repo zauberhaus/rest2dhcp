@@ -57,7 +57,7 @@ func GetRootCmd() *RootCommand {
 	rootCmd = &RootCommand{
 		Command: cobra.Command{
 			Use:   "rest2dhcp",
-			Short: "A REST webservice gateway to a DHCP server",
+			Short: "A REST web service gateway to a DHCP server",
 			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 				return rootCmd.initializeConfig(cmd)
 			},
