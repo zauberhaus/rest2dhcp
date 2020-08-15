@@ -20,9 +20,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/zauberhaus/rest2dhcp/client"
+	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"gopkg.in/yaml.v3"
 )
 
 // Key is the context key
@@ -76,4 +79,21 @@ func NewQuery(request *http.Request) (*Query, error) {
 	}
 
 	return &query, nil
+}
+
+// ServerConfig describes the server configuartion
+type ServerConfig struct {
+	Local       net.IP              `yaml:"local,omitempty" json:"local,omitempty" xml:"local,omitempty"`
+	Remote      net.IP              `yaml:"remote,omitempty" json:"remote,omitempty" xml:"remote,omitempty"`
+	Relay       net.IP              `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`
+	Mode        dhcp.ConnectionType `yaml:"mode,omitempty" json:"mode,omitempty" xml:"mode,omitempty"`
+	Listen      string              `yaml:"listen,omitempty" json:"listen,omitempty" xml:"listen,omitempty"`
+	Timeout     time.Duration       `yaml:"timeout,omitempty" json:"timeout,omitempty" xml:"timeout,omitempty"`
+	DHCPTimeout time.Duration       `yaml:"dhcpTimeout,omitempty" json:"dhcpTimeout,omitempty" xml:"dhcpTimeout,omitempty"`
+	Retry       time.Duration       `yaml:"retry,omitempty" json:"retry,omitempty" xml:"retry,omitempty"`
+}
+
+func (c *ServerConfig) String() string {
+	data, _ := yaml.Marshal(c)
+	return string(data)
 }

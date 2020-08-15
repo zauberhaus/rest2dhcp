@@ -171,13 +171,6 @@ func (m MAC) String() string {
 	return net.HardwareAddr(m).String()
 }
 
-/*
-type VersionInfo struct {
-	XMLName        xml.Name `xml:"version" json:"-" yaml:"-"`
-	ServiceVersion *Version `yaml:"rest2dhcp,omitempty" xml:"rest2dhcp,omitempty" json:"rest2dhcp,omitempty"`
-}
-*/
-
 type Version struct {
 	BuildDate    string              `yaml:"buildDate,omitempty" json:"buildDate,omitempty" xml:"buildDate,omitempty"`
 	Compiler     string              `yaml:"compiler" json:"compiler" xml:"compiler"`

@@ -17,12 +17,18 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/service"
 
@@ -32,44 +38,91 @@ import (
 
 var cfgFile string
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "rest2dhcp",
-	Short: "A REST webservice gateway to a DHCP server",
-	Run:   service.RunServer,
-}
+const (
+	defaultConfigFilename = "rest2dhcp"
+)
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+// RootCommand is a root cobra.Command with extra fields
+type RootCommand struct {
+	cobra.Command
+
+	config service.ServerConfig
+	server *service.Server
 }
 
 // GetRootCmd returns the cobra root command
-func GetRootCmd() *cobra.Command {
+func GetRootCmd() *RootCommand {
+	var rootCmd *RootCommand
+
+	rootCmd = &RootCommand{
+		Command: cobra.Command{
+			Use:   "rest2dhcp",
+			Short: "A REST webservice gateway to a DHCP server",
+			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+				return rootCmd.initializeConfig(cmd)
+			},
+			Run: func(cmd *cobra.Command, args []string) {
+
+				rootCmd.config.Mode = dhcp.AutoDetect
+
+				modetxt := viper.GetString("mode")
+				err := rootCmd.config.Mode.Parse(modetxt)
+				if err != nil {
+					fmt.Printf("Error: %v\n\n", err)
+					cmd.Usage()
+					os.Exit(1)
+				}
+
+				done := make(chan os.Signal, 1)
+				signal.Notify(done, os.Interrupt, syscall.SIGINT)
+
+				ctx, cancel := context.WithCancel(context.Background())
+
+				server := service.NewServer(&rootCmd.config, service.Version)
+				server.Start(ctx)
+
+				rootCmd.server = server
+
+				signal := <-done
+				log.Printf("Got %v", signal.String())
+
+				cancel()
+
+				<-server.Done
+				log.Println("Done.")
+
+			},
+		},
+	}
+
+	addVersionCmd(&rootCmd.Command)
+
+	rootCmd.init()
+
 	return rootCmd
 }
 
-func init() {
-	cobra.OnInitialize(initConfig)
-
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.rest2dhcp.yaml)")
-
-	rootCmd.Flags().IPP("server", "s", nil, "DHCP server ip (autodetect)")
-	rootCmd.Flags().IPP("client", "c", nil, "Local IP for DHCP relay client (autodetect)")
-	rootCmd.Flags().IPP("relay", "r", nil, "Relay IP for DHCP relay client (client IP)")
-	rootCmd.Flags().StringP("listen", "l", ":8080", "Address of the web service")
-	rootCmd.Flags().StringP("mode", "m", "auto", "DHCP connection mode: "+strings.Join(dhcp.AllConnectionTypes, "|"))
-	rootCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Service query timeout")
-	rootCmd.Flags().DurationP("retry", "x", 15*time.Second, "DHCP retry time")
-	rootCmd.Flags().DurationP("dhcp-timeout", "d", 5*time.Second, "DHCP query timeout")
+// GetServer returns the server for tests
+func (r *RootCommand) GetServer() *service.Server {
+	return r.server
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
+func (r *RootCommand) init() {
+	r.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.rest2dhcp.yaml)")
+
+	r.Flags().IPVarP(&r.config.Remote, "server", "s", nil, "DHCP server ip (autodetect)")
+	r.Flags().IPVarP(&r.config.Local, "client", "c", nil, "Local IP for DHCP relay client (autodetect)")
+	r.Flags().IPVarP(&r.config.Relay, "relay", "r", nil, "Relay IP for DHCP relay client (client IP)")
+
+	r.Flags().StringVarP(&r.config.Listen, "listen", "l", ":8080", "Address of the web service")
+	r.Flags().StringP("mode", "m", "auto", "DHCP connection mode: "+strings.Join(dhcp.AllConnectionTypes, "|"))
+
+	r.Flags().DurationVarP(&r.config.Timeout, "timeout", "t", 30*time.Second, "Service query timeout")
+	r.Flags().DurationVarP(&r.config.Retry, "retry", "x", 15*time.Second, "DHCP retry time")
+	r.Flags().DurationVarP(&r.config.DHCPTimeout, "dhcp-timeout", "d", 5*time.Second, "DHCP query timeout")
+}
+
+func (r *RootCommand) initializeConfig(cmd *cobra.Command) error {
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -81,15 +134,45 @@ func initConfig() {
 			os.Exit(1)
 		}
 
-		// Search config in home directory with name ".test1" (without extension).
 		viper.AddConfigPath(home)
 		viper.SetConfigName(".rest2dhcp")
 	}
 
-	viper.AutomaticEnv() // read in environment variables that match
+	viper.AutomaticEnv()
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
+
+		viper.WatchConfig()
+		viper.OnConfigChange(func(e fsnotify.Event) {
+			fmt.Println("Config file changed:", e.Name)
+		})
+	} else {
+		// file not found isn't an error
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return err
+		}
 	}
+
+	r.bindAllFlags(cmd)
+
+	return nil
+}
+
+func (r *RootCommand) bindAllFlags(cmd *cobra.Command) {
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+
+		// bind extra Env names
+		if strings.Contains(f.Name, "-") {
+			envVar := strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_"))
+			viper.BindEnv(f.Name, envVar)
+		}
+
+		// push values from config file to cobra
+		if !f.Changed && viper.IsSet(f.Name) {
+			val := viper.Get(f.Name)
+			cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+		}
+	})
 }

@@ -25,18 +25,14 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"regexp"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/spf13/cobra"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"gopkg.in/yaml.v3"
@@ -77,20 +73,21 @@ var (
 // Server provides the REST service
 type Server struct {
 	http.Server
-	client  *dhcp.Client
-	timeout time.Duration
-	Done    chan bool
-	Info    *client.Version
+	client *dhcp.Client
+	Done   chan bool
+	Info   *client.Version
+	Config *ServerConfig
 }
 
 // NewServer creates a new Server object
-func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionType, addr string, timeout time.Duration, dhcpTimeout time.Duration, retry time.Duration, version *client.Version) *Server {
+func NewServer(config *ServerConfig, version *client.Version) *Server {
 	server := Server{}
-	server.Addr = addr
+	server.Config = config
+	server.Addr = config.Listen
 	server.Done = make(chan bool)
-	server.timeout = timeout
+	//server.timeout = config.Timeout
 
-	server.client = dhcp.NewClient(local, remote, relay, mode, dhcpTimeout, retry)
+	server.client = dhcp.NewClient(config.Local, config.Remote, config.Relay, config.Mode, config.DHCPTimeout, config.Retry)
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
@@ -106,47 +103,10 @@ func NewServer(local net.IP, remote net.IP, relay net.IP, mode dhcp.ConnectionTy
 		version.Mode = server.client.GetDHCPRelayMode()
 		server.Info = version
 		log.Printf("Version:\n%v\n", server.Info)
+		log.Printf("Config:\n%v\n", server.Config)
 	}
 
 	return &server
-}
-
-// RunServer is a cobra function to start the server in a cobra command
-func RunServer(cmd *cobra.Command, args []string) {
-
-	remote, _ := cmd.Flags().GetIP("server")
-	local, _ := cmd.Flags().GetIP("client")
-	relay, _ := cmd.Flags().GetIP("relay")
-	timeout, _ := cmd.Flags().GetDuration("timeout")
-	listen, _ := cmd.Flags().GetString("listen")
-	dhcpTimeout, _ := cmd.Flags().GetDuration("dhcp-timeout")
-	retry, _ := cmd.Flags().GetDuration("retry")
-
-	mode := dhcp.AutoDetect
-
-	modetxt, _ := cmd.Flags().GetString("mode")
-	err := mode.Parse(modetxt)
-	if err != nil {
-		fmt.Printf("Error: %v\n\n", err)
-		cmd.Usage()
-		os.Exit(1)
-	}
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	server := NewServer(local, remote, relay, mode, listen, timeout, dhcpTimeout, retry, Version)
-	server.Start(ctx)
-
-	signal := <-done
-	log.Printf("Got %v", signal.String())
-
-	cancel()
-
-	<-server.Done
-	log.Println("Done.")
 }
 
 // Start starts the server
@@ -228,7 +188,7 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
 	defer cancel()
 
 	lease := <-s.client.GetLease(ctx, query.Hostname, net.HardwareAddr(query.Mac))
@@ -256,7 +216,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
 	defer cancel()
 
 	lease := <-s.client.ReNew(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
@@ -282,7 +242,7 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
 	defer cancel()
 
 	lease := <-s.client.Release(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)

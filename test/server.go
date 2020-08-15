@@ -75,7 +75,18 @@ func (s *TestServer) setup() (*service.Server, context.CancelFunc) {
 	mode := dhcp.AutoDetect
 	mode.Parse(os.Getenv("MODE"))
 
-	server := service.NewServer(local, remote, relay, mode, ":8080", 30*time.Second, 3*time.Second, 15*time.Second, NewTestVersion())
+	config := service.ServerConfig{
+		Local:       local,
+		Remote:      remote,
+		Relay:       relay,
+		Mode:        mode,
+		Listen:      ":8080",
+		Timeout:     30 * time.Second,
+		DHCPTimeout: 3 * time.Second,
+		Retry:       15 * time.Second,
+	}
+
+	server := service.NewServer(&config, NewTestVersion())
 	service.Version = server.Info
 
 	ctx, cancel := context.WithCancel(context.Background())

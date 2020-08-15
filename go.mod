@@ -3,12 +3,14 @@ module github.com/zauberhaus/rest2dhcp
 go 1.14
 
 require (
+	github.com/fsnotify/fsnotify v1.4.7
 	github.com/google/gopacket v1.1.18
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/prometheus/client_golang v1.7.1
 	github.com/spf13/cobra v1.0.0
+	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.6.1
 	github.com/zbiljic/go-filelock v0.0.0-20170914061330-1dbf7103ab7d

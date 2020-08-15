@@ -1,0 +1,7 @@
+server: 2.2.2.2
+relay: 3.3.3.3
+client: 127.0.0.1
+mode: broken
+timeout: 13m
+dhcp-timeout: 27s
+retry: 38000ms

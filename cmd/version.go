@@ -25,21 +25,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// VersionCmd represents the version command
-var VersionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show the version info",
-	Run: func(cmd *cobra.Command, args []string) {
+// addVersionCmd creates and adds the version command to Root
+func addVersionCmd(root *cobra.Command) {
+	var versionCmd = &cobra.Command{
+		Use:   "version",
+		Short: "Show the version info",
+		Run: func(cmd *cobra.Command, args []string) {
 
-		data, err := yaml.Marshal(service.Version)
-		if err != nil {
-			log.Fatal(err)
-		}
+			data, err := yaml.Marshal(service.Version)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		fmt.Println(string(data))
-	},
-}
+			fmt.Fprintln(cmd.OutOrStderr(), string(data))
+		},
+	}
 
-func init() {
-	rootCmd.AddCommand(VersionCmd)
+	root.AddCommand(versionCmd)
 }
