@@ -88,13 +88,14 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 		log.SetLevel(log.DebugLevel)
 	} else if config.Quiet {
 		log.SetLevel(log.WarnLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
 	}
 
 	server := Server{}
 	server.Config = config
 	server.Addr = config.Listen
 	server.Done = make(chan bool)
-	//server.timeout = config.Timeout
 
 	server.client = dhcp.NewClient(config.Local, config.Remote, config.Relay, config.Mode, config.DHCPTimeout, config.Retry)
 

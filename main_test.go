@@ -107,6 +107,90 @@ func TestRunServer(t *testing.T) {
 	fmt.Println("Done.", pid)
 }
 
+func TestRunServerArgs(t *testing.T) {
+	testCases := []struct {
+		Name  string
+		Args  []string
+		Check func(t *testing.T, s *service.Server)
+	}{
+		{
+			Name: "Mode",
+			Args: []string{"-m", "udp"},
+			Check: func(t *testing.T, s *service.Server) {
+				assert.Equal(t, s.Config.Mode, dhcp.DefaultRelay)
+			},
+		},
+		{
+			Name: "IP",
+			Args: []string{"-s", "3.3.3.3", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8888"},
+			Check: func(t *testing.T, s *service.Server) {
+				assert.Equal(t, s.Config.Remote.To4(), net.IP{3, 3, 3, 3})
+				assert.Equal(t, s.Config.Relay.To4(), net.IP{4, 4, 4, 4})
+				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
+				assert.Equal(t, s.Config.Listen, "127.0.0.1:8888")
+			},
+		},
+		{
+			Name: "Timeout",
+			Args: []string{"-t", "2m", "-x", "13s", "-d", "5368ms"},
+			Check: func(t *testing.T, s *service.Server) {
+				assert.Equal(t, s.Config.Timeout, 2*time.Minute)
+				assert.Equal(t, s.Config.Retry, 13*time.Second)
+				assert.Equal(t, s.Config.DHCPTimeout, 5368*time.Millisecond)
+				assert.Equal(t, s.Config.Verbose, false)
+				assert.Equal(t, s.Config.Quiet, false)
+			},
+		},
+		{
+			Name: "LogLevel",
+			Args: []string{"-q", "-v"},
+			Check: func(t *testing.T, s *service.Server) {
+				assert.Equal(t, s.Config.Verbose, true)
+				assert.Equal(t, s.Config.Quiet, true)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.Name, func(t *testing.T) {
+			pid := syscall.Getpid()
+			done := make(chan bool)
+
+			fl := test_test.NewServerLock()
+			defer fl.Unlock()
+
+			c := cmd.GetRootCmd()
+
+			c.SetArgs(tc.Args)
+
+			go func() {
+				fmt.Println("Start server...")
+				err := c.Execute()
+				assert.NoError(t, err)
+				close(done)
+			}()
+
+			time.Sleep(1 * time.Second)
+
+			server := c.GetServer()
+			if assert.NotNil(t, server) {
+				if assert.NotNil(t, tc.Check) {
+					tc.Check(t, server)
+				}
+
+				fmt.Printf("Send SIGINT to %v\n", pid)
+				syscall.Kill(pid, syscall.SIGINT)
+
+				<-done
+			}
+
+			fmt.Println("Done.")
+
+		})
+	}
+}
+
 func TestRunServerEnv(t *testing.T) {
 	testCases := []struct {
 		Name  string
@@ -191,19 +275,18 @@ func TestRunServerEnv(t *testing.T) {
 				if assert.NotNil(t, tc.Check) {
 					tc.Check(t, server)
 				}
+
+				fmt.Printf("Send SIGINT to %v\n", pid)
+				syscall.Kill(pid, syscall.SIGINT)
+
+				<-done
 			}
 
-			fmt.Printf("Send SIGINT to %v\n", pid)
-			syscall.Kill(pid, syscall.SIGINT)
-
-			<-done
 			fmt.Println("Done.")
 
 			for k := range tc.Env {
 				os.Unsetenv(k)
 			}
-
-			fmt.Println("RELAY: " + os.Getenv("RELAY"))
 		})
 
 	}
@@ -256,12 +339,13 @@ func TestRunServerConfigFile(t *testing.T) {
 				if assert.NotNil(t, tc.Check) {
 					tc.Check(t, server)
 				}
+
+				fmt.Printf("Send SIGINT to %v\n", pid)
+				syscall.Kill(pid, syscall.SIGINT)
+
+				<-done
 			}
 
-			fmt.Printf("Send SIGINT to %v\n", pid)
-			syscall.Kill(pid, syscall.SIGINT)
-
-			<-done
 			fmt.Println("Done.")
 		})
 

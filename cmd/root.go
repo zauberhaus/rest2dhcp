@@ -117,6 +117,7 @@ func (r *RootCommand) init() {
 
 	r.Flags().StringVarP(&r.config.Listen, "listen", "l", ":8080", "Address of the web service")
 	r.Flags().StringP("mode", "m", "auto", "DHCP connection mode: "+strings.Join(dhcp.AllConnectionTypes, ", "))
+	viper.BindPFlag("mode", r.Flags().Lookup("mode"))
 
 	r.Flags().DurationVarP(&r.config.Timeout, "timeout", "t", 30*time.Second, "Service query timeout")
 	r.Flags().DurationVarP(&r.config.Retry, "retry", "x", 15*time.Second, "DHCP retry time")
