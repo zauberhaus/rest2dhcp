@@ -18,7 +18,8 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
 	"github.com/zauberhaus/rest2dhcp/service"

@@ -19,9 +19,10 @@ package dhcp
 import (
 	cryptorand "crypto/rand"
 	"encoding/binary"
-	"log"
 	"net"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"

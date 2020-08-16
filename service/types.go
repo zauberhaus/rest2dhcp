@@ -91,6 +91,8 @@ type ServerConfig struct {
 	Timeout     time.Duration       `yaml:"timeout,omitempty" json:"timeout,omitempty" xml:"timeout,omitempty"`
 	DHCPTimeout time.Duration       `yaml:"dhcpTimeout,omitempty" json:"dhcpTimeout,omitempty" xml:"dhcpTimeout,omitempty"`
 	Retry       time.Duration       `yaml:"retry,omitempty" json:"retry,omitempty" xml:"retry,omitempty"`
+	Verbose     bool                `yaml:"verbose,omitempty" json:"verbose,omitempty" xml:"verbose,omitempty"`
+	Quiet       bool                `yaml:"quiet,omitempty" json:"quiet,omitempty" xml:"quiet,omitempty"`
 }
 
 func (c *ServerConfig) String() string {

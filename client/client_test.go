@@ -74,12 +74,12 @@ func TestClientVersion(t *testing.T) {
 
 			version, err := cl.Version(ctx)
 			if cl.ContentType == client.Unknown {
-				clerr, ok := err.(*client.Error)
+				clientError, ok := err.(*client.Error)
 				if !ok {
 					t.Fatalf("Unexpected error type")
 				}
 
-				assert.Equal(t, 415, clerr.Code(), "Unexpected status code")
+				assert.Equal(t, 415, clientError.Code(), "Unexpected status code")
 
 			} else if assert.NoError(t, err, "client.Version failed") {
 				if assert.NotNil(t, version, "Empty version info") {
@@ -143,12 +143,12 @@ func TestClient(t *testing.T) {
 			lease, err := cl.Lease(ctx, tc.Hostname+"-1", nil)
 
 			if tc.Mime == client.Unknown {
-				clerr, ok := err.(*client.Error)
+				clientError, ok := err.(*client.Error)
 				if !ok {
 					assert.Fail(t, "Unexpected error type")
 				}
 
-				assert.Equal(t, 415, clerr.Code(), "Unexpected status code")
+				assert.Equal(t, 415, clientError.Code(), "Unexpected status code")
 
 				return
 			}
@@ -249,9 +249,9 @@ func TestClientInvalidLease(t *testing.T) {
 			_, err := cl.Lease(ctx, tc.Hostname, tc.Mac)
 
 			if assert.Error(t, err) {
-				clerr, ok := err.(*client.Error)
+				clientError, ok := err.(*client.Error)
 				if assert.True(t, ok) {
-					assert.Equal(t, tc.Code, clerr.Code())
+					assert.Equal(t, tc.Code, clientError.Code())
 				}
 			}
 		})
@@ -299,7 +299,7 @@ func TestClientInvalidRenew(t *testing.T) {
 			Hostname: "test",
 			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
 			IP:       net.IP{1, 2, 3, 4},
-			Code:     400,
+			Code:     417,
 		},
 	}
 
@@ -312,9 +312,9 @@ func TestClientInvalidRenew(t *testing.T) {
 			_, err := cl.Renew(ctx, tc.Hostname, tc.Mac, tc.IP)
 
 			if assert.Error(t, err) {
-				clerr, ok := err.(*client.Error)
+				clientError, ok := err.(*client.Error)
 				if assert.True(t, ok) {
-					assert.Equal(t, tc.Code, clerr.Code())
+					assert.Equal(t, tc.Code, clientError.Code())
 				}
 			}
 		})

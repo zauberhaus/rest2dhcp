@@ -18,9 +18,10 @@ package dhcp
 
 import (
 	"context"
-	"log"
 	"net"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/gopacket/layers"
 )
@@ -114,7 +115,7 @@ func (c *UDPConn) Receive() (chan *DHCP4, chan error) {
 	return chan1, chan2
 }
 
-// Block outgoing traffic until contect is finished
+// Block outgoing traffic until context is finished
 func (c *UDPConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
 

@@ -23,6 +23,8 @@ import (
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/cmd"
 	"github.com/zauberhaus/rest2dhcp/service"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -33,6 +35,10 @@ var (
 )
 
 func main() {
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: true,
+	})
+
 	version := client.NewVersion(buildTime, gitCommit, tag, treeState)
 	service.Version = version
 

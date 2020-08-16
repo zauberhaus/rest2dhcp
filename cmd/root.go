@@ -19,12 +19,13 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
@@ -120,6 +121,10 @@ func (r *RootCommand) init() {
 	r.Flags().DurationVarP(&r.config.Timeout, "timeout", "t", 30*time.Second, "Service query timeout")
 	r.Flags().DurationVarP(&r.config.Retry, "retry", "x", 15*time.Second, "DHCP retry time")
 	r.Flags().DurationVarP(&r.config.DHCPTimeout, "dhcp-timeout", "d", 5*time.Second, "DHCP query timeout")
+
+	r.Flags().BoolVarP(&r.config.Verbose, "verbose", "v", false, "Verbose messages")
+	r.Flags().BoolVarP(&r.config.Quiet, "quiet", "q", false, "Only access log messages")
+
 }
 
 func (r *RootCommand) initializeConfig(cmd *cobra.Command) error {

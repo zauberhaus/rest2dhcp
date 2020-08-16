@@ -21,11 +21,12 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/gopacket/layers"
 	"github.com/zauberhaus/rest2dhcp/routing"
@@ -51,7 +52,7 @@ type Client struct {
 }
 
 var (
-	htable = crc64.MakeTable(crc64.ECMA)
+	hashtable = crc64.MakeTable(crc64.ECMA)
 )
 
 // NewClient initialize a new client
@@ -71,11 +72,11 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 	if remote == nil {
 		gateway, src, err := client.getDefaultGateway()
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatal(err)
 		}
 
 		if gateway == nil {
-			log.Fatalln("Can't detect gatway ip")
+			log.Fatal("Can't detect gatway ip")
 		}
 
 		if local == nil {
@@ -100,11 +101,11 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 		connType = client.getAutoConnectionType(remote)
 	}
 
-	log.Printf("DHCP server: %v", remote)
+	log.Infof("DHCP server: %v", remote)
 	client.remote = remote
 
 	if relay != nil {
-		log.Printf("Relay agent IP: %v", relay)
+		log.Infof("Relay agent IP: %v", relay)
 		client.relay = relay.To4()
 	} else {
 		client.relay = local
@@ -149,7 +150,7 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 		log.Fatalf("Unknown connection type: %v", connType)
 	}
 
-	log.Printf("Use %v connection", connType)
+	log.Infof("Use %v connection", connType)
 
 	return &client
 }
@@ -163,9 +164,9 @@ func (c *Client) Start() {
 			c3, c2 := c.conn.Receive()
 			select {
 			case err := <-c2:
-				log.Println(err)
+				log.Error(err)
 			case <-c.ctx.Done():
-				log.Println("DHCP client stopped")
+				log.Info("DHCP client stopped")
 				close(c.Done)
 				return
 			case dhcp := <-c3:
@@ -173,28 +174,32 @@ func (c *Client) Start() {
 					go func() {
 						lease, ok := c.store.Get(dhcp.Xid)
 						if ok {
-							log.Printf("Got DHCP %s", dhcp.GetMsgType())
+							logDebugf(dhcp.Xid, "Got DHCP %s", dhcp.GetMsgType())
 							if lease.CheckResponseType(dhcp) {
 								msgType := dhcp.GetMsgType()
 								if msgType == layers.DHCPMsgTypeNak {
 									msg := dhcp.GetOption(layers.DHCPOptMessage)
-									lease.SetError(fmt.Errorf("DHCP server: %v", string(msg.Data)))
+									if msg != nil {
+										lease.SetError(fmt.Errorf("NAK: %v", string(msg.Data)))
+									} else {
+										lease.SetError(fmt.Errorf("NAK"))
+									}
 								}
 
-								log.Printf("Change status %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
+								logDebugf(lease.Xid, "Change status %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
 								lease.DHCP4 = dhcp
 								lease.Touch()
 								lease.Done <- true
 							} else {
-								log.Printf("Unexpected response %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
+								logErrorf(dhcp.Xid, "Unexpected response %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
 							}
 
 						} else {
-							log.Printf("Unknown DHCP response id=%x", dhcp.Xid)
+							logErrorf(dhcp.Xid, "Unknown DHCP response id=%x", dhcp.Xid)
 						}
 					}()
 				} else {
-					log.Println("empty packet")
+					log.Error("empty packet")
 				}
 			}
 		}
@@ -228,11 +233,11 @@ func (c *Client) GetDHCPRelayMode() ConnectionType {
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.HardwareAddr) chan *Lease {
+func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease {
 	chan1 := make(chan *Lease)
 
-	if haddr == nil {
-		haddr = c.getHardwareAddr(hostname)
+	if chaddr == nil {
+		chaddr = c.getHardwareAddr(hostname)
 	}
 
 	go func() {
@@ -240,17 +245,17 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 		var lease2 *Lease
 
 		for {
-			ctx, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.discover(ctx, c.conn, hostname, haddr, nil)
-			lease = c.wait(ctx, ch, cancel)
+			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.discover(ctx2, c.conn, hostname, chaddr, nil)
+			lease = c.wait(ctx2, ch, cancel)
 
 			if lease != nil {
-				log.Printf("DHCP Discover finished (%v)", lease.YourClientIP)
+				logDebugf(lease.Xid, "DHCP discover finished (%v)", lease.YourClientIP)
 				break
 			} else {
-				log.Printf("Timeout, wait %v", c.retry)
+				log.Infof("Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Printf("Retry...")
+					log.Info("Retry...")
 				} else {
 					break
 				}
@@ -263,18 +268,18 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 		}
 
 		for {
-			ctx, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ctx, ch, cancel)
+			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(ctx2, ch, cancel)
 
 			if lease2 != nil {
-				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
+				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				log.Printf("Timeout, wait %v", c.retry)
+				logInfof(lease.Xid, "Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Printf("Retry...")
+					log.Info("Retry...")
 				} else {
 					break
 				}
@@ -292,36 +297,38 @@ func (c *Client) GetLease(ctx context.Context, hostname string, haddr net.Hardwa
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) Renew(ctx context.Context, hostname string, haddr net.HardwareAddr, ip net.IP) chan *Lease {
+func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *Lease {
 	chan1 := make(chan *Lease)
 
-	if haddr == nil {
-		haddr = c.getHardwareAddr(hostname)
+	if chaddr == nil {
+		chaddr = c.getHardwareAddr(hostname)
 	}
 
 	go func() {
 		var lease2 *Lease
 
 		for {
-			lease := NewLease(layers.DHCPMsgTypeDiscover, 0, haddr, nil)
+			xid := GenerateXID()
+
+			lease := NewLease(layers.DHCPMsgTypeDiscover, xid, chaddr, nil)
 			lease.RelayAgentIP = c.relay
 			lease.YourClientIP = ip
 			if hostname != "" {
 				lease.SetHostname(hostname)
 			}
 
-			ctx, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ctx, ch, cancel)
+			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
+			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(ctx2, ch, cancel)
 
 			if lease2 != nil {
-				log.Printf("DHCP request finished (%v)", lease2.YourClientIP)
+				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				log.Printf("Timeout, wait %v", c.retry)
+				log.Infof("Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Printf("Retry...")
+					log.Info("Retry...")
 				} else {
 					break
 				}
@@ -339,20 +346,22 @@ func (c *Client) Renew(ctx context.Context, hostname string, haddr net.HardwareA
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) Release(ctx context.Context, hostname string, haddr net.HardwareAddr, ip net.IP) chan error {
+func (c *Client) Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
 	chan1 := make(chan error)
 
-	if haddr == nil {
-		haddr = c.getHardwareAddr(hostname)
+	if chaddr == nil {
+		chaddr = c.getHardwareAddr(hostname)
 	}
 
 	go func() {
 
-		request := NewPackage(layers.DHCPMsgTypeRelease, 0, haddr, nil)
+		xid := GenerateXID()
+
+		request := NewPackage(layers.DHCPMsgTypeRelease, xid, chaddr, nil)
 		request.RelayAgentIP = c.relay
 		request.ClientIP = ip
 
-		log.Printf("Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeRelease.String()))
+		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeRelease.String()))
 
 		c1, c2 := c.conn.Send(request)
 		select {
@@ -374,11 +383,13 @@ func (c *Client) discover(ctx context.Context, conn Connection, hostname string,
 
 	go func() {
 
-		dhcp := NewLease(layers.DHCPMsgTypeDiscover, 0, chaddr, options)
+		xid := GenerateXID()
+
+		dhcp := NewLease(layers.DHCPMsgTypeDiscover, xid, chaddr, options)
 		dhcp.SetHostname(hostname)
 		dhcp.RelayAgentIP = c.relay
 
-		log.Printf("Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
+		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
 
 		c1, c2 := conn.Send(dhcp.DHCP4)
 		select {
@@ -408,7 +419,7 @@ func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease 
 
 		request := lease.GetRequest(msgType, options)
 
-		log.Printf("Send DHCP %s", strings.ToUpper(msgType.String()))
+		logDebugf(request.Xid, "Send DHCP %s", strings.ToUpper(msgType.String()))
 		lease.SetMsgType(layers.DHCPMsgTypeRequest)
 
 		c1, c2 := conn.Send(request)
@@ -437,7 +448,7 @@ func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease 
 func (c *Client) getLocalIP(remote net.IP) (net.IP, error) {
 	r, err := routing.New()
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
 
 	_, _, src, err := r.Route(remote)
@@ -448,7 +459,7 @@ func (c *Client) getLocalIP(remote net.IP) (net.IP, error) {
 func (c *Client) getDefaultGateway() (net.IP, net.IP, error) {
 	r, err := routing.New()
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
 
 	_, gateway, src, err := r.Route(net.IP{1, 1, 1, 1})
@@ -479,7 +490,7 @@ func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
 		return addr
 	}
 
-	h := crc64.Checksum([]byte(name), htable)
+	h := crc64.Checksum([]byte(name), hashtable)
 	return []byte{
 		byte(0xff & h),
 		byte(0xff & (h >> 8)),
@@ -512,4 +523,40 @@ func (c *Client) sleep(ctx context.Context, timeout time.Duration) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func logDebug(xid uint32, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Debug(args...)
+}
+
+func logDebugf(xid uint32, format string, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Debugf(format, args...)
+}
+
+func logInfo(xid uint32, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Info(args...)
+}
+
+func logInfof(xid uint32, format string, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Infof(format, args...)
+}
+
+func logError(xid uint32, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Error(args...)
+}
+
+func logErrorf(xid uint32, format string, args ...interface{}) {
+	log.WithFields(log.Fields{
+		"xid": fmt.Sprintf("%v", xid),
+	}).Errorf(format, args...)
 }

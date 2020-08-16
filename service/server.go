@@ -21,13 +21,15 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
+
+	"github.com/google/gopacket/layers"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
@@ -81,6 +83,13 @@ type Server struct {
 
 // NewServer creates a new Server object
 func NewServer(config *ServerConfig, version *client.Version) *Server {
+
+	if config.Verbose {
+		log.SetLevel(log.DebugLevel)
+	} else if config.Quiet {
+		log.SetLevel(log.WarnLevel)
+	}
+
 	server := Server{}
 	server.Config = config
 	server.Addr = config.Listen
@@ -102,8 +111,9 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 		version.RelayIP = server.client.GetDHCPRelayIP()
 		version.Mode = server.client.GetDHCPRelayMode()
 		server.Info = version
-		log.Printf("Version:\n%v\n", server.Info)
-		log.Printf("Config:\n%v\n", server.Config)
+
+		log.Printf("Version:\n\n%v\n", server.Info)
+		log.Debugf("Config:\n\n%v\n", server.Config)
 	}
 
 	return &server
@@ -227,6 +237,11 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !lease.Ok() {
+		if lease.GetMsgType() == layers.DHCPMsgTypeNak {
+			http.Error(w, lease.Error().Error(), http.StatusExpectationFailed)
+			return
+		}
+
 		http.Error(w, lease.Error().Error(), http.StatusBadRequest)
 		return
 	}

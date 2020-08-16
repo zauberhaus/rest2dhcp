@@ -18,10 +18,11 @@ package dhcp
 
 import (
 	"context"
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -42,7 +43,7 @@ type DualConn struct {
 	cnt     int
 }
 
-// NewDualConn initialises a new connection
+// NewDualConn initializes a new connection
 func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connection {
 
 	out, err := net.ListenPacket("ip4:udp", local.IP.String())
@@ -112,7 +113,7 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 			DstPort: layers.UDPPort(67),
 		}
 
-		log.Printf("Use port: %v", uint16(udp.SrcPort))
+		logDebugf(dhcp.Xid, "Use port: %v", uint16(udp.SrcPort))
 
 		udp.SetNetworkLayerForChecksum(ip)
 
@@ -193,7 +194,7 @@ func (c *DualConn) getPort() layers.UDPPort {
 	return layers.UDPPort(c.cnt)
 }
 
-// Block outgoing traffic until contect is finished
+// Block outgoing traffic until context is finished
 func (c *DualConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
 

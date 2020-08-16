@@ -18,10 +18,11 @@ package dhcp
 
 import (
 	"context"
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
