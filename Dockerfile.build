@@ -4,8 +4,9 @@ RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep 
 
 ENV SRC /go/src/github.com/zauberhaus/rest2dhcp
 ENV TZ=Pacific/Auckland
+ENV OUT=/out/rest2dhcp
 
 COPY . $SRC
 WORKDIR $SRC
 
-CMD OUT=/opt/rest2dhcp ./build.sh
+CMD ./build.sh
