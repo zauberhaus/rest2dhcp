@@ -25,7 +25,7 @@ jobs:
       run: docker build -t rest2dhcp-build -f Dockerfile.build .
 
     - name: Run build process 
-      run: docker run -it --rm -v $(pwd)/build:/out rest2dhcp-build
+      run: docker run --rm -v $(pwd)/build:/out rest2dhcp-build
 
     - name: Create Release
       id: create_release
