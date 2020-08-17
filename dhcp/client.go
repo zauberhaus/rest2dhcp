@@ -469,7 +469,7 @@ func (c *Client) getDefaultGateway() (net.IP, net.IP, error) {
 
 func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
 	client := http.Client{
-		Timeout: 100 * time.Millisecond,
+		Timeout: 1 * time.Second,
 	}
 
 	resp, err := client.Get("http://" + remote.String())

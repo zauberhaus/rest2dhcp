@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package test_test
+package helper_test
 
 import (
 	"context"
@@ -98,12 +98,13 @@ func (s *TestServer) setup() (*service.Server, context.CancelFunc) {
 // Run checks weather a server is running and starts a new server if needed
 // For usage in MainTest
 func (s *TestServer) Run(m *testing.M) {
+	fl := NewServerLock()
+	defer fl.Unlock()
+
 	s.started = s.check()
 
 	if s.started {
-		fl := NewServerLock()
-		defer fl.Unlock()
-
+		fmt.Println("Start test server...")
 		server, cancel := s.setup()
 		code := m.Run()
 		cancel()

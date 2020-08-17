@@ -35,7 +35,7 @@ Flags:
 | client       | IP of the local DHCP listener  | IP to default gateway       |
 | server       | IP of the remote DHCP server   | Default gateway |
 | relay        | Published DHCP relay IP        | Client IP       |
-| listen       | IP:Port of the web listener    | 0.0.0.0:8080    |
+| listen       | IP:Port of the web listener    | :8080    |
 | mode         | Connection mode                | auto            |
 | timeout      | Web service timeout            | 30s             |
 | dhcp-timeout | DHCP response timeout          | 5s             |
@@ -47,15 +47,23 @@ Flags:
 Unfortunately, the DHCP relay implementations are often very buggy or have some strange DoS protections.
 The gateway has four different implementations for the DHCP connection and an auto-detection.
 
-| Mode      | Description                               |
-|-----------|-------------------------------------------|
-| auto      | A very simple auto-detection (only for development and testing) |
-| udp       | A UDP connection using port 67 for incoming and outgoing traffic (Openwrt) |
-| packet    | Like the UDP connection, but with a UDP packet connection for outgoing traffic |
-| fritzbox  | A UDP packet connection sending DHCP packages with increasing src ports to port 67 and a UDP listener on port 67 (Fritz!Box 7590) |   
-| broken    | A packet listener using port 68 for incoming and port 67 for outgoing traffic (Android WiFi hotspot) |
+| Mode      | Description                               | Test system  |
+|-----------|-------------------------------------------|---|
+| auto      | A very simple auto-detection (only for development and testing) ||
+| udp       | A UDP connection using port 67 for incoming and outgoing traffic | openwrt-19.07|
+| packet    | Like the UDP connection, but with a UDP packet connection for outgoing traffic |openwrt-19.07, Fritz!Box 7590|
+| fritzbox  | A UDP packet connection sending DHCP packages with increasing src ports to port 67 and a UDP listener on port 67 | Fritz!Box 7590 |   
+| broken    | A packet listener using port 68 for incoming and port 67 for outgoing traffic |Android 10 WiFi hotspot |
 
-Openwrt needs a very long time to respond on an IP request for an unknown host. It seems to be part of the DoS protection.
+Openwrt needs a very long time to respond on an IP request for an unknown host. 
+It seems to be part of the DoS protection.
+Therefore, the timeout must be selected large enough.
+
+A Fritzbox will not respond if the time between two DHCP relay requests with the same source port is less than 15 seconds. 
+Therefore, the fritzbox connector increases the source port after each request.
+
+The Android WiFi hotspot Android incorrectly sends responses to DHCP relay requests to port 68.
+
 
 ## Build
 

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main_test
+package cmd_test
 
 import (
 	"bytes"
@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"syscall"
 	"testing"
@@ -32,13 +33,22 @@ import (
 	"github.com/zauberhaus/rest2dhcp/cmd"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/service"
-	test_test "github.com/zauberhaus/rest2dhcp/test"
+	helper_test "github.com/zauberhaus/rest2dhcp/test"
+	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
 )
 
+func TestMain(m *testing.M) {
+	fl := helper_test.NewServerLock()
+	defer fl.Unlock()
+
+	code := m.Run()
+	os.Exit(code)
+}
+
 func TestRunVersion(t *testing.T) {
 
-	service.Version = test_test.NewTestVersion()
+	service.Version = helper_test.NewTestVersion()
 
 	c := cmd.GetRootCmd()
 	c.SetArgs([]string{"version"})
@@ -58,53 +68,46 @@ func TestRunVersion(t *testing.T) {
 }
 
 func TestRunServer(t *testing.T) {
-	pid := syscall.Getpid()
-	done := make(chan bool)
 
-	service.Version = test_test.NewTestVersion()
+	service.Version = helper_test.NewTestVersion()
 
-	fl := test_test.NewServerLock()
-	defer fl.Unlock()
+	c := cmd.GetRootCmd()
+	c.SetArgs([]string{"-q"})
 
-	go func() {
-		fmt.Println("Start server...")
-		c := cmd.GetRootCmd()
-		c.SetArgs([]string{})
-		err := c.Execute()
-		assert.NoError(t, err)
-		close(done)
-	}()
+	r := runner{}
+	started, done := r.start(t, c)
 
-	time.Sleep(1 * time.Second)
+	if assert.True(t, <-started) {
+		resp, err := http.Get(helper_test.VersionURL)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	resp, err := http.Get("http://localhost:8080/version")
-	if err != nil {
-		t.Fatal(err)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("Can't read version: %s (%v)", resp.Status, resp.StatusCode)
+		}
+
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("Can't read version: %s", err)
+		}
+
+		var info client.Version
+		err = yaml.Unmarshal(data, &info)
+		if err != nil {
+			fmt.Println(string(data))
+			t.Fatalf("Invalid version info: %s", err)
+		}
+
+		assert.Equal(t, service.Version, &info, "Invalid version info")
+
+		r.stop(t)
+
+		<-done
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("Can't read version: %s (%v)", resp.Status, resp.StatusCode)
-	}
+	fmt.Println("Done.")
 
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Can't read version: %s", err)
-	}
-
-	var info client.Version
-	err = yaml.Unmarshal(data, &info)
-	if err != nil {
-		fmt.Println(string(data))
-		t.Fatalf("Invalid version info: %s", err)
-	}
-
-	assert.Equal(t, &info, service.Version, "Invalid version info")
-
-	fmt.Printf("Send SIGINT to %v", pid)
-	syscall.Kill(pid, syscall.SIGINT)
-
-	<-done
-	fmt.Println("Done.", pid)
 }
 
 func TestRunServerArgs(t *testing.T) {
@@ -122,12 +125,12 @@ func TestRunServerArgs(t *testing.T) {
 		},
 		{
 			Name: "IP",
-			Args: []string{"-s", "3.3.3.3", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8888"},
+			Args: []string{"-s", "3.3.3.3", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8080"},
 			Check: func(t *testing.T, s *service.Server) {
 				assert.Equal(t, s.Config.Remote.To4(), net.IP{3, 3, 3, 3})
 				assert.Equal(t, s.Config.Relay.To4(), net.IP{4, 4, 4, 4})
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
-				assert.Equal(t, s.Config.Listen, "127.0.0.1:8888")
+				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
 			},
 		},
 		{
@@ -137,16 +140,15 @@ func TestRunServerArgs(t *testing.T) {
 				assert.Equal(t, s.Config.Timeout, 2*time.Minute)
 				assert.Equal(t, s.Config.Retry, 13*time.Second)
 				assert.Equal(t, s.Config.DHCPTimeout, 5368*time.Millisecond)
-				assert.Equal(t, s.Config.Verbose, false)
-				assert.Equal(t, s.Config.Quiet, false)
+				assert.Equal(t, false, s.Config.Verbose, "Verbose should be false")
 			},
 		},
 		{
 			Name: "LogLevel",
-			Args: []string{"-q", "-v"},
+			Args: []string{"-v"},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Verbose, true)
-				assert.Equal(t, s.Config.Quiet, true)
+				assert.Equal(t, true, s.Config.Verbose)
+				assert.Equal(t, true, s.Config.Quiet)
 			},
 		},
 	}
@@ -154,39 +156,26 @@ func TestRunServerArgs(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
-			pid := syscall.Getpid()
-			done := make(chan bool)
-
-			fl := test_test.NewServerLock()
-			defer fl.Unlock()
-
 			c := cmd.GetRootCmd()
+			c.SetArgs(append(tc.Args, "-q"))
 
-			c.SetArgs(tc.Args)
+			r := runner{}
+			started, done := r.start(t, c)
 
-			go func() {
-				fmt.Println("Start server...")
-				err := c.Execute()
-				assert.NoError(t, err)
-				close(done)
-			}()
-
-			time.Sleep(1 * time.Second)
-
-			server := c.GetServer()
-			if assert.NotNil(t, server) {
-				if assert.NotNil(t, tc.Check) {
-					tc.Check(t, server)
+			if assert.True(t, <-started) {
+				server := c.GetServer()
+				if assert.NotNil(t, server) {
+					if assert.NotNil(t, tc.Check) {
+						tc.Check(t, server)
+					}
 				}
 
-				fmt.Printf("Send SIGINT to %v\n", pid)
-				syscall.Kill(pid, syscall.SIGINT)
+				r.stop(t)
 
 				<-done
 			}
 
 			fmt.Println("Done.")
-
 		})
 	}
 }
@@ -218,15 +207,15 @@ func TestRunServerEnv(t *testing.T) {
 		{
 			Name: "LocalRemote",
 			Env: map[string]string{
-				"LISTEN": "127.0.0.1:8888",
+				"LISTEN": "127.0.0.1:8080",
 				"CLIENT": "127.0.0.1",
-				"SERVER": "1.1.1.1",
+				"SERVER": "10.199.178.131",
 				"MODE":   "packet",
 			},
 			Check: func(t *testing.T, s *service.Server) {
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
-				assert.Equal(t, s.Config.Listen, "127.0.0.1:8888")
+				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
 				assert.Equal(t, s.Config.Mode, dhcp.Relay)
 			},
 		},
@@ -248,36 +237,25 @@ func TestRunServerEnv(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
-			pid := syscall.Getpid()
-			done := make(chan bool)
-
-			fl := test_test.NewServerLock()
-			defer fl.Unlock()
-
 			for k, v := range tc.Env {
 				os.Setenv(k, v)
 			}
 
 			c := cmd.GetRootCmd()
-			c.SetArgs([]string{})
+			c.SetArgs([]string{"-q"})
 
-			go func() {
-				fmt.Println("Start server...")
-				err := c.Execute()
-				assert.NoError(t, err)
-				close(done)
-			}()
+			r := runner{}
+			started, done := r.start(t, c)
 
-			time.Sleep(1 * time.Second)
-
-			server := c.GetServer()
-			if assert.NotNil(t, server) {
-				if assert.NotNil(t, tc.Check) {
-					tc.Check(t, server)
+			if assert.True(t, <-started) {
+				server := c.GetServer()
+				if assert.NotNil(t, server) {
+					if assert.NotNil(t, tc.Check) {
+						tc.Check(t, server)
+					}
 				}
 
-				fmt.Printf("Send SIGINT to %v\n", pid)
-				syscall.Kill(pid, syscall.SIGINT)
+				r.stop(t)
 
 				<-done
 			}
@@ -316,32 +294,22 @@ func TestRunServerConfigFile(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
-			pid := syscall.Getpid()
-			done := make(chan bool)
-
-			fl := test_test.NewServerLock()
-			defer fl.Unlock()
 
 			c := cmd.GetRootCmd()
-			c.SetArgs([]string{"--config", tc.Filename})
+			c.SetArgs([]string{"-q", "--config", "test_config.yaml"})
 
-			go func() {
-				fmt.Println("Start server...")
-				err := c.Execute()
-				assert.NoError(t, err)
-				close(done)
-			}()
+			r := runner{}
+			started, done := r.start(t, c)
 
-			time.Sleep(1 * time.Second)
-
-			server := c.GetServer()
-			if assert.NotNil(t, server) {
-				if assert.NotNil(t, tc.Check) {
-					tc.Check(t, server)
+			if assert.True(t, <-started) {
+				server := c.GetServer()
+				if assert.NotNil(t, server) {
+					if assert.NotNil(t, tc.Check) {
+						tc.Check(t, server)
+					}
 				}
 
-				fmt.Printf("Send SIGINT to %v\n", pid)
-				syscall.Kill(pid, syscall.SIGINT)
+				r.stop(t)
 
 				<-done
 			}
@@ -349,5 +317,60 @@ func TestRunServerConfigFile(t *testing.T) {
 			fmt.Println("Done.")
 		})
 
+	}
+}
+
+type runner struct {
+	pid int
+}
+
+func (r *runner) start(t *testing.T, c *cmd.RootCommand) (chan bool, chan bool) {
+	started := make(chan bool)
+	done := make(chan bool)
+
+	go func() {
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		go func() {
+			fmt.Printf("Start server %v", t.Name())
+			r.pid = syscall.Getpid()
+			err := c.Execute()
+			assert.NoError(t, err)
+			cancel()
+			close(done)
+		}()
+
+		client := http.Client{}
+
+		for {
+			req, _ := http.NewRequestWithContext(ctx, "GET", helper_test.VersionURL, nil)
+			_, err := client.Do(req)
+			if err == nil {
+				started <- true
+				break
+			}
+
+			if urlError, ok := err.(*url.Error); ok {
+				if urlError.Timeout() || urlError.Err == context.Canceled {
+					fmt.Printf(": %v\n", err)
+					r.stop(t)
+					started <- false
+					break
+				}
+			}
+
+			time.Sleep(100 * time.Millisecond)
+			fmt.Print(".")
+		}
+
+	}()
+
+	return started, done
+}
+
+func (r *runner) stop(t *testing.T) {
+	if r.pid > 0 {
+		syscall.Kill(r.pid, syscall.SIGINT)
 	}
 }

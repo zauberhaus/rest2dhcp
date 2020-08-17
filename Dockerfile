@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.14-alpine AS builder
 
 RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep git upx ca-certificates tzdata busybox-static
 

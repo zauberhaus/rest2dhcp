@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"testing"
 	"time"
 
@@ -28,12 +27,12 @@ import (
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/service"
-	test_test "github.com/zauberhaus/rest2dhcp/test"
+	helper_test "github.com/zauberhaus/rest2dhcp/test"
 )
 
 var (
 	host   = "http://localhost:8080"
-	server = test_test.TestServer{}
+	server = helper_test.TestServer{}
 )
 
 func TestMain(m *testing.M) {
@@ -127,9 +126,6 @@ func TestClient(t *testing.T) {
 		},
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(len(testCases))
-
 	for _, tc := range testCases {
 		tc := tc // We run our tests twice one with this line & one without
 		t.Run(tc.Name, func(t *testing.T) {
@@ -164,8 +160,8 @@ func TestClient(t *testing.T) {
 						assert.Equal(t, lease2.Mac, lease.Mac)
 						assert.Equal(t, lease2.IP, lease.IP)
 
-						if server.GetMode() == dhcp.Fritzbox && checkDNS(lease) != 2 {
-							t.Errorf("DNS entry %s not found.", lease.Hostname)
+						if server.GetMode() == dhcp.Fritzbox {
+							checkDNSExists(t, lease)
 						}
 
 						lease3, err := cl.Lease(ctx, tc.Hostname+"-2", tc.Mac)
@@ -180,10 +176,8 @@ func TestClient(t *testing.T) {
 
 							if assert.NoError(t, err1) && assert.NoError(t, err2) {
 								if server.GetMode() == dhcp.Fritzbox {
-									time.Sleep(15 * time.Second)
-
-									assert.Equal(t, 0, checkDNS(lease), "DNS entry %s is still there.", lease.Hostname)
-									assert.Equal(t, 0, checkDNS(lease3), "DNS entry %s is still there.", lease3.Hostname)
+									checkDNSNotExists(t, lease)
+									checkDNSNotExists(t, lease3)
 								}
 							}
 						}
@@ -197,7 +191,7 @@ func TestClient(t *testing.T) {
 								assert.Equal(t, lease.IP, lease4.IP)
 
 								if server.GetMode() == dhcp.Fritzbox {
-									assert.Equal(t, 2, checkDNS(lease4), "DNS entry %s not found.", lease.Hostname)
+									checkDNSExists(t, lease4)
 								}
 
 								err = cl.Release(ctx, lease4.Hostname, lease4.Mac, lease4.IP)
@@ -208,7 +202,6 @@ func TestClient(t *testing.T) {
 				}
 			}
 			fmt.Printf("DONE %v\n", tc.Name)
-			wg.Done()
 		})
 	}
 }
@@ -321,17 +314,66 @@ func TestClientInvalidRenew(t *testing.T) {
 	}
 }
 
-func checkDNS(l *client.Lease) int {
-	ips, err := net.LookupIP(l.Hostname)
-	if err != nil {
-		return 0
-	}
+func checkDNSExists(t *testing.T, l *client.Lease) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	for _, ip := range ips {
-		if ip.String() == l.IP.String() {
-			return 2
+	rc := false
+	empty := true
+
+	for {
+		ips, err := net.LookupIP(l.Hostname)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				assert.Fail(t, "DNS entry %v not found", l.Hostname)
+				break
+			case <-time.After(100 * time.Millisecond):
+				empty = false
+				fmt.Print(".")
+				continue
+			}
 		}
+
+		for _, ip := range ips {
+			if ip.String() == l.IP.String() {
+				rc = true
+				break
+			}
+		}
+
+		if !rc {
+			assert.Fail(t, "Wrong IPs for DNS entry %v not found", l.Hostname)
+		}
+
+		break
 	}
 
-	return 1
+	if !empty {
+		fmt.Println("")
+	}
+
+	return rc
+}
+
+func checkDNSNotExists(t *testing.T, l *client.Lease) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	for {
+		_, err := net.LookupIP(l.Hostname)
+		if err == nil {
+			select {
+			case <-ctx.Done():
+				fmt.Print("\n")
+				return assert.Fail(t, "DNS entry %v found", l.Hostname)
+			case <-time.After(100 * time.Millisecond):
+				fmt.Print(".")
+				continue
+			}
+		}
+
+		fmt.Print("\n")
+		return true
+	}
 }

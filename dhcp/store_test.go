@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
+	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 )
 
@@ -34,41 +35,46 @@ func TestStoreSimple(t *testing.T) {
 	store.Set(lease)
 
 	lease = dhcp.NewLease(layers.DHCPMsgTypeDiscover, xid2, nil, nil)
-	store.Set(lease)
 
-	if !store.Has(xid1) {
-		t.Fatalf("Lease %v not found", xid1)
+	err := store.Set(lease)
+	if assert.NoError(t, err) {
+		if !store.Has(xid1) {
+			t.Fatalf("Lease %v not found", xid1)
+		}
+
+		if store.Has(100) {
+			t.Fatalf("Not existing lease %v found", 100)
+		}
+
+		l, ok := store.Get(xid1)
+
+		if !ok {
+			t.Fatalf("Lease %v not found", xid1)
+		}
+
+		if l.Xid != xid1 {
+			t.Fatalf("Got wrong lease %v != %v", l.Xid, xid1)
+		}
+
+		if !store.Remove(xid1) {
+			t.Fatalf("Lease %v not found", xid1)
+		}
+
+		if store.Remove(100) {
+			t.Fatalf("Not existing lease %v found", 100)
+		}
+
+		if store.Has(xid1) {
+			t.Fatalf("Remove for %v failed", xid1)
+		}
+
+		if !store.Has(xid2) {
+			t.Fatalf("Lease %v not found", xid2)
+		}
 	}
 
-	if store.Has(100) {
-		t.Fatalf("Not existing lease %v found", 100)
-	}
-
-	l, ok := store.Get(xid1)
-
-	if !ok {
-		t.Fatalf("Lease %v not found", xid1)
-	}
-
-	if l.Xid != xid1 {
-		t.Fatalf("Got wrong lease %v != %v", l.Xid, xid1)
-	}
-
-	if !store.Remove(xid1) {
-		t.Fatalf("Lease %v not found", xid1)
-	}
-
-	if store.Remove(100) {
-		t.Fatalf("Not existing lease %v found", 100)
-	}
-
-	if store.Has(xid1) {
-		t.Fatalf("Remove for %v failed", xid1)
-	}
-
-	if !store.Has(xid2) {
-		t.Fatalf("Lease %v not found", xid2)
-	}
+	err = store.Set(nil)
+	assert.Error(t, err)
 }
 
 func TestStoreRun(t *testing.T) {

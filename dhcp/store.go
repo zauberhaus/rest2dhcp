@@ -18,6 +18,7 @@ package dhcp
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -52,7 +53,7 @@ func NewStore(ttl time.Duration) *LeaseStore {
 }
 
 // Set or add a lease to the store
-func (l *LeaseStore) Set(lease *Lease) {
+func (l *LeaseStore) Set(lease *Lease) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -64,8 +65,10 @@ func (l *LeaseStore) Set(lease *Lease) {
 			renewal: lease.GetRenewalTime(),
 		}
 	} else {
-		log.Printf("Try to store empty lease")
+		return fmt.Errorf("Try to store empty lease")
 	}
+
+	return nil
 }
 
 // Get a value from the store

@@ -84,8 +84,10 @@ func GetRootCmd() *RootCommand {
 
 				rootCmd.server = server
 
-				signal := <-done
-				log.Printf("Got %v", signal.String())
+				s := <-done
+				log.Printf("Got %v", s.String())
+
+				signal.Reset(syscall.SIGINT)
 
 				cancel()
 

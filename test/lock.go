@@ -14,28 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package test_test
+package helper_test
 
 import (
 	"fmt"
 	"os/user"
 
-	"github.com/zbiljic/go-filelock"
+	"github.com/juju/fslock"
 )
 
 // NewServerLock creates and locks a file lock
-func NewServerLock() filelock.TryLockerSafe {
+func NewServerLock() *fslock.Lock {
 	tmp := "default"
 	u, err := user.Current()
 	if err == nil {
 		tmp = fmt.Sprint(u.Uid)
 	}
 
-	fl, err := filelock.New("/tmp/rest2dhcp-test-" + tmp)
-	if err != nil {
-		panic(err)
-	}
+	filename := "/tmp/rest2dhcp-test-" + tmp
 
+	fl := fslock.New(filename)
+
+	fmt.Printf("Lock %v\n", filename)
 	err = fl.Lock()
 	if err != nil {
 		panic(err)

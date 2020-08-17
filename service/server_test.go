@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/service"
-	test_test "github.com/zauberhaus/rest2dhcp/test"
+	helper_test "github.com/zauberhaus/rest2dhcp/test"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,7 +42,7 @@ const (
 )
 
 var (
-	server = test_test.TestServer{}
+	server = helper_test.TestServer{}
 )
 
 func TestMain(m *testing.M) {
