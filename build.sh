@@ -19,6 +19,6 @@ fi
 
 cd `go env GOPATH`/src/github.com/zauberhaus/rest2dhcp
 
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitCommit=$COMMIT -X main.buildTime=$NOW -X main.treeState=$STATE -X main.tag=$TAGS" -o $OUT
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitCommit=$COMMIT -X main.buildTime=$NOW -X main.treeState=$STATE -X main.tag=$TAGS $FLAGS" -o $OUT
 
 which upx && `which upx` $OUT

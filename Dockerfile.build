@@ -5,6 +5,7 @@ RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep 
 ENV SRC /go/src/github.com/zauberhaus/rest2dhcp
 ENV TZ=Pacific/Auckland
 ENV OUT=/out/rest2dhcp
+ENV FLAGS "-linkmode external -extldflags -static -s -w"
 
 COPY . $SRC
 WORKDIR $SRC
