@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build and release
     runs-on: ubuntu-latest
     steps:
 
@@ -27,15 +27,6 @@ jobs:
     - name: Run build process 
       run: mkdir -p ./build && docker run --rm -v $(pwd)/build:/out rest2dhcp-build
 
-    - name: List results 
-      run: ls -la ./build
-
-
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
