@@ -38,13 +38,47 @@ jobs:
         draft: false
         prerelease: false
         
-    - name: Upload Release Asset
-      id: upload-release-asset 
+    - name: Upload amd64
+      id: upload-release-asset-amd64 
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./build/rest2dhcp
-        asset_name: rest2dhcp-Linux-x86_64
+        asset_path: ./build/rest2dhcp-amd64
+        asset_name: rest2dhcp-linux-x86_64
         asset_content_type: application/octet-stream
+
+    - name: Upload 386
+      id: upload-release-asset-386 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./build/rest2dhcp-386
+        asset_name: rest2dhcp-linux-386
+        asset_content_type: application/octet-stream
+
+    - name: Upload arm64
+      id: upload-release-asset-arm64 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./build/rest2dhcp-arm64
+        asset_name: rest2dhcp-linux-arm64
+        asset_content_type: application/octet-stream
+  
+    - name: Upload arm
+      id: upload-release-asset-arm 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./build/rest2dhcp-arm
+        asset_name: rest2dhcp-linux-arm
+        asset_content_type: application/octet-stream
+    
