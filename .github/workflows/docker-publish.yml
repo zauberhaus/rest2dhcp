@@ -31,7 +31,7 @@ jobs:
         run: docker build . --file Dockerfile --tag $IMAGE_NAME
 
       - name: Log into registry
-        run: echo "b2aeaad0-f514-4c5f-ae56-0873c4aa6afb" | docker login -u zauberhaus --password-stdin
+        run: echo ${{ secrets.DOCKER_TOKEN }} | docker login -u zauberhaus --password-stdin
 
       - name: Push image
         run: |
