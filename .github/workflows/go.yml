@@ -27,7 +27,7 @@ jobs:
         go mod download
 
     - name: Build
-      run: ./build
+      run: pwd
 
     - name: Test
       run: go test -v ./dhcp
