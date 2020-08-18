@@ -17,7 +17,7 @@ env:
 jobs:
   # Push image to GitHub Packages.
   # See also https://docs.docker.com/docker-hub/builds/
-  push:
+  master:
     # Ensure test job passes before pushing image.
 
     runs-on: ubuntu-latest

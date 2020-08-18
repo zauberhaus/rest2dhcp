@@ -7,7 +7,7 @@
 rest2dhcp
 setenv
 build/*
-
+qemu*
 # Test binary, built with `go test -c`
 *.test
 
