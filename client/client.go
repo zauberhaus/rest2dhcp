@@ -250,6 +250,8 @@ func (c *Client) unmarshal(data []byte, result interface{}, mime ContentType) er
 		if err != nil {
 			return err
 		}
+	default:
+		return fmt.Errorf("Unexpected content type")
 	}
 
 	return nil

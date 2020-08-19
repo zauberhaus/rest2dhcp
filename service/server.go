@@ -14,18 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//go:generate esc -o doc.go -ignore /doc/.*map -pkg service ../doc ../api
+
 package service
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -103,7 +110,6 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 	router.Use(server.ContentMiddleware)
 	router.Use(server.CounterMiddleware)
 	router.Use(server.PrometheusMiddleware)
-	server.setup(router)
 
 	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
 
@@ -113,9 +119,31 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 		version.Mode = server.client.GetDHCPRelayMode()
 		server.Info = version
 
+		if version.GitVersion == "" {
+			version.GitVersion = "dev"
+			version.GitTreeState = "dirty"
+		}
+
 		log.Printf("Version:\n\n%v\n", server.Info)
 		log.Debugf("Config:\n\n%v\n", server.Config)
 	}
+
+	// Manipulate modtime of swagger file to invalidate cache
+	file, ok := _escData["/api/swagger.yaml"]
+	if ok {
+		file.modtime = time.Now().Unix()
+		data, err := decode(file.compressed)
+		if err == nil {
+			old := string(data)
+			new := strings.Replace(old, "version: \"1.0.0\"", "version: \""+version.GitVersion+"\"", 1)
+			if old != new {
+				file.size = int64(len(new))
+				file.compressed = encode([]byte(new))
+			}
+		}
+	}
+
+	server.setup(router)
 
 	return &server
 }
@@ -158,6 +186,24 @@ func (s *Server) setup(router *mux.Router) {
 		Methods("GET").
 		Path("/metrics").
 		Handler(promhttp.Handler())
+
+	router.
+		Name("/swagger.yaml").
+		Methods("GET").
+		Path("/api/swagger.yaml").
+		Handler(http.FileServer(FS(false)))
+
+	router.
+		Name("/api").
+		Methods("GET").
+		PathPrefix("/api").
+		Handler(RedirectHandler("/doc/"))
+
+	router.
+		Name("/doc").
+		Methods("GET").
+		PathPrefix("/doc/").
+		Handler(http.FileServer(FS(false)))
 
 	for k, p := range renewPath {
 		router.
@@ -239,7 +285,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 
 	if !lease.Ok() {
 		if lease.GetMsgType() == layers.DHCPMsgTypeNak {
-			http.Error(w, lease.Error().Error(), http.StatusExpectationFailed)
+			http.Error(w, lease.Error().Error(), http.StatusNotAcceptable)
 			return
 		}
 
@@ -308,44 +354,30 @@ func (s *Server) write(w http.ResponseWriter, value interface{}, t client.Conten
 	return fmt.Errorf("Unknown content format: %v", t)
 }
 
-// ContentMiddleware returns a gorilla mux middleware to check the Accept HTTP header and set a context value
-func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		content := r.Header.Get("Accept")
-
-		if strings.Contains(content, client.JSON) {
-			ctx := context.WithValue(r.Context(), Content, client.JSON)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, client.YAML) {
-			ctx := context.WithValue(r.Context(), Content, client.YAML)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, client.XML) {
-			ctx := context.WithValue(r.Context(), Content, client.XML)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if content == "" || content == "*/*" {
-			ctx := context.WithValue(r.Context(), Content, client.YAML)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else {
-			httpError(w, http.StatusUnsupportedMediaType)
-		}
-	})
-}
-
-// PrometheusMiddleware returns a gorilla mux middleware to measure the execution time as prometheus metrics
-func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		route := mux.CurrentRoute(r)
-		timer := prometheus.NewTimer(httpDuration.WithLabelValues(route.GetName()))
-		next.ServeHTTP(w, r)
-		timer.ObserveDuration()
-	})
-}
-
-// CounterMiddleware returns a gorilla mux middleware to count requests as prometheus metrics
-func (s *Server) CounterMiddleware(next http.Handler) http.Handler {
-	return promhttp.InstrumentHandlerCounter(httpCounter, next)
-}
-
 func httpError(w http.ResponseWriter, code int) {
 	http.Error(w, http.StatusText(code), code)
+}
+
+func decode(data string) ([]byte, error) {
+	b64 := base64.NewDecoder(base64.StdEncoding, bytes.NewBufferString(data))
+	gr, err := gzip.NewReader(b64)
+	if err != nil {
+		return nil, err
+	}
+
+	return ioutil.ReadAll(gr)
+}
+
+func encode(data []byte) string {
+	var buf bytes.Buffer
+	gr, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	gr.Write(data)
+	gr.Close()
+
+	var buf2 bytes.Buffer
+	b64 := base64.NewEncoder(base64.StdEncoding, &buf2)
+	b64.Write(buf.Bytes())
+	b64.Close()
+
+	return buf2.String()
 }

@@ -1,8 +1,8 @@
 # rest2dhcp
 
 
-A REST web service gateway to a DHCP server
-The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.
+#### A REST web service gateway to a DHCP server
+The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.  
 Therefore, it's possible to request IPs for more than one hostname or MAC address.
 ```
 Usage:
@@ -64,6 +64,54 @@ Therefore, the fritzbox connector increases the source port after each request.
 
 The Android WiFi hotspot Android incorrectly sends responses to DHCP relay requests to port 68.
 
+## API
+
+The service provides an online documentation under the following url:
+
+http://localhost:8080/api
+
+## Client
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/zauberhaus/rest2dhcp/client"
+)
+
+func main() {
+	cl := client.NewClient("http://localhost:8080")
+
+	version, err := cl.Version(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(version)
+
+	lease, err := cl.Lease(context.Background(), "test", nil)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(lease)
+
+	lease, err = cl.Renew(context.Background(), lease.Hostname, lease.Mac, lease.IP)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(lease)
+
+	err = cl.Release(context.Background(), lease.Hostname, lease.Mac, lease.IP)
+	if err != nil {
+		panic(err)
+	}
+}
+```
 
 ## Build
 
@@ -81,9 +129,5 @@ Requirements:
 * Docker
 
 ```
-./build-docker.sh
-```
-or
-```
-./run-docker.sh
+./scripts/build-docker.sh
 ```

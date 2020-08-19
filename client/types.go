@@ -71,6 +71,11 @@ type Lease struct {
 	Expire   time.Time `json:"expire" xml:"expire"`
 }
 
+func (l *Lease) String() string {
+	data, _ := yaml.Marshal(l)
+	return string(data)
+}
+
 // NewLease initializes a new lease object from a DHCP package
 func NewLease(hostname string, d dhcp.DHCP4) *Lease {
 	return &Lease{

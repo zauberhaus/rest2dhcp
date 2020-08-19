@@ -8,6 +8,9 @@ rest2dhcp
 setenv
 build/*
 qemu*
+example/example
+.vscode
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -16,3 +19,5 @@ qemu*
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+service/static.go
+doc/swagger.yaml

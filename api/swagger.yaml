@@ -1,19 +1,20 @@
 swagger: "2.0"
 info:
+  description: "A REST web service gateway to a DHCP server
+  The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.
+  Therefore, it's possible to request IPs for more than one hostname or MAC address."  
   version: "1.0.0"
   title: "rest2dhcp"
   license:
     name: "Apache 2.0"
     url: "http://www.apache.org/licenses/LICENSE-2.0.html"
 host: "localhost:8080"
-basePath: "/v2"
 tags:
 - name: "lease"
   description: "Manage dhcp leases"
 - name: "info"
   description: "Show service info"
 schemes:
-- "https"
 - "http"
 paths:
   /ip/{hostname}:
@@ -32,7 +33,7 @@ paths:
         description: "Hostname"
         required: true
         type: string
-        pattern: hostname
+        format: hostname
       responses:
         "200":
           description: "successful operation"
@@ -40,9 +41,13 @@ paths:
             $ref: "#/definitions/Lease"
         "400":
           description: "Invalid parameter"
-      security:
-      - api_key: []
-
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+        
   /ip/{hostname}/{mac}:
     get:
       tags:
@@ -59,13 +64,13 @@ paths:
         description: "Hostname"
         required: true
         type: "string"
-        pattern: hostname
+        format: hostname
       - name: "mac"
         in: "path"
         description: "Mac address"
         required: true
         type: "string"
-        pattern: mac
+        format: mac
       responses:
         "200":
           description: "successful operation"
@@ -73,9 +78,13 @@ paths:
             $ref: "#/definitions/Lease"
         "400":
           description: "Invalid parameter"
-      security:
-      - api_key: []
-
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+    
   /ip/{hostname}/{mac}/{ip}:
     get:
       tags:
@@ -92,27 +101,34 @@ paths:
         description: "Hostname"
         required: true
         type: "string"
-        pattern: hostname
+        format: hostname
       - name: "mac"
         in: "path"
         description: "Mac address"
         required: true
         type: "string"
-        pattern: mac
+        format: mac
       - name: "ip"
         in: "path"
         description: "IP of lease request"
         required: true
         type: "string"
-        pattern: ipv4
+        format: ipv4
       responses:
         "200":
           description: "successful operation"
           schema:
             $ref: "#/definitions/Lease"
-      security:
-      - api_key: []
-
+        "400":
+          description: "Invalid parameter"
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+      
+          
     delete:
       tags:
       - "lease"
@@ -125,25 +141,25 @@ paths:
         description: "Hostname"
         required: true
         type: "string"
-        pattern: hostname
+        format: hostname
       - name: "mac"
         in: "path"
         description: "Mac address"
         required: true
         type: "string"
-        pattern: mac
+        format: mac
       - name: "ip"
         in: "path"
         description: "IP of lease request"
         required: true
         type: "string"
-        pattern: ipv4
+        format: ipv4
       responses:
         "200":
           description: "successful operation"
-      security:
-      - api_key: []
-
+        "400":
+          description: "Invalid parameter"
+  
   /version:
     get:
       tags:

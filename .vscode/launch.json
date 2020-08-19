@@ -5,6 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Example",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/example"
+        },
+        {
             "name": "Launch (sudo)",
             "type": "go",
             "request": "attach",
