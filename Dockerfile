@@ -11,7 +11,7 @@ WORKDIR $SRC
 
 RUN go get github.com/mjibson/esc
 RUN go generate ./...
-RUN go build -ldflags "-X main.gitCommit=`git rev-parse HEAD` -X main.buildTime=`date -u -I'seconds'` -X main.treeState=`git diff --stat | grep "" > /dev/null  && echo dirty || echo clean` -X main.tag=`git describe --tags 2> /dev/null` -linkmode external -extldflags -static -s -w" -o /out/rest2dhcp
+RUN go build -ldflags "-X main.gitCommit=`git rev-parse --short HEAD` -X main.buildTime=`date -u -I'seconds'` -X main.treeState=`git diff --stat | grep "" > /dev/null  && echo dirty || echo clean` -X main.tag=`git describe --tags 2> /dev/null` -linkmode external -extldflags -static -s -w" -o /out/rest2dhcp
 RUN ./scripts/install_upx.sh && upx /out/rest2dhcp
 
 FROM scratch
