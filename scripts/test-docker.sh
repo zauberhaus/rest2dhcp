@@ -6,8 +6,6 @@ RELAY=`echo $ROUTE |  awk '{ print $7}'`
 
 IMAGE="rest2dhcp.debug:latest"
 
-cd ..
-
 echo "Build docker image"
 docker build -t $IMAGE -f Dockerfile.debug .
 

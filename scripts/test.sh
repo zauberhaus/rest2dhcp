@@ -2,7 +2,5 @@
 
 export CGO_ENABLED=0
 
-cd ..
-
 go test -coverpkg=./... -coverprofile=coverage.out ./cmd ./client ./dhcp ./service $@ && \
 go tool cover -func coverage.out

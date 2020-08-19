@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -292,7 +293,7 @@ func TestClientInvalidRenew(t *testing.T) {
 			Hostname: "test",
 			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
 			IP:       net.IP{1, 2, 3, 4},
-			Code:     417,
+			Code:     http.StatusNotAcceptable,
 		},
 	}
 
