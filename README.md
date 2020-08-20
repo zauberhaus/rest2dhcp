@@ -28,18 +28,18 @@ Flags:
   -v, --verbose                 Verbose messages
 ```
 
-## Parameter
+## Flags and Environment Variables
 
-| Parameter      | Description                          | Default         |
-|--------------|--------------------------------|-----------------|
-| client       | IP of the local DHCP listener  | IP to default gateway       |
-| server       | IP of the remote DHCP server   | Default gateway |
-| relay        | Published DHCP relay IP        | Client IP       |
-| listen       | IP:Port of the web listener    | :8080    |
-| mode         | Connection mode                | auto            |
-| timeout      | Web service timeout            | 30s             |
-| dhcp-timeout | DHCP response timeout          | 5s             |
-| retry        | Wait time before retry         | 15s             |
+| Parameter    | Env Variable | Description                      | Default               |
+|--------------|--------------|----------------------------------|-----------------------|
+| client       | CLIENT       | IP of the local DHCP listener    | IP to default gateway |
+| server       | SERVER       | IP of the remote DHCP server     | Default gateway       |
+| relay        | RELAY        | Published DHCP relay IP          | Client IP             |
+| listen       | LISTEN       | IP:Port of the web listener      | :8080                 |
+| mode         | MODE         | Connection mode                  | auto                  |
+| timeout      | TIMEOUT      | Web service timeout              | 30s                   |
+| dhcp-timeout | DHCP_TIMEOUT | DHCP response timeout            | 5s                    |
+| retry        | RETRY        | Wait time before retry           | 15s                   |
 
 
 ## Connection Mode
@@ -124,7 +124,7 @@ Requirements:
 ./build.sh
 ```
 
-## Docker build
+## Docker build without Go
 
 Requirements:
 * Docker
@@ -132,3 +132,5 @@ Requirements:
 ```
 ./scripts/build-docker.sh
 ```
+
+The script creates a folder build with the executable

@@ -1,16 +1,17 @@
 #!/bin/sh
 
 if test -z $1 ; then
-    VERSION="latest"
+    TAG="docker.io/zauberhaus/rest2dhcp:latest"
 else
-    VERSION="$1"    
+    TAG="$1"    
 fi
 
-TAG="docker.io/zauberhaus/rest2dhcp:$VERSION"
-
-INSPECT=`docker buildx imagetools inspect $TAG --raw`
-
-IMAGES=`echo $INSPECT | jq -r 'select(.manifests != null) | .manifests[] | .digest + "/" + .platform.architecture + "/" + .platform.variant'`
+if docker buildx > /dev/null 2>&1 ; then
+    if echo "$TAG" | grep "^docker.io/" > /dev/null ; then
+        INSPECT=`docker buildx imagetools inspect $TAG --raw`
+        IMAGES=`echo $INSPECT | jq -r 'select(.manifests != null) | .manifests[] | .digest + "/" + .platform.architecture + "/" + .platform.variant'`
+    fi
+fi
 
 rm -rf build
 mkdir -p build && cd build
