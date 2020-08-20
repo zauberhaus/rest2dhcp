@@ -14,5 +14,5 @@ COPY . $SRC
 RUN cd $SRC && go mod download
 WORKDIR $SRC
 
-CMD cd $SRC && go test -p 1 -v ./cmd ./client ./dhcp ./service
+CMD cd $SRC && go test -v ./cmd ./client ./dhcp ./service
 
