@@ -72,7 +72,7 @@ func TestRunServer(t *testing.T) {
 	service.Version = helper_test.NewTestVersion()
 
 	c := cmd.GetRootCmd()
-	c.SetArgs([]string{"-q"})
+	c.SetArgs([]string{"-v"})
 
 	r := runner{}
 	started, done := r.start(t, c)

@@ -13,12 +13,12 @@ fi
 DHCP_IP=`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' dhcp`
 echo "DHCP server runs on $DHCP_IP"
 
-go clean -testcache
-SERVER=$DHCP_IP MODE=udp go test ./cmd ./client ./dhcp ./service
-go clean -testcache
-SERVER=$DHCP_IP MODE=packet go test ./cmd ./client ./dhcp ./service
-go clean -testcache
-SERVER=$DHCP_IP MODE=dual go test ./cmd ./client ./dhcp ./service
+echo "build test container"
+docker build -t rest2dhcp:test -f Dockerfile.wf .
+
+docker run --rm -e SERVER=172.17.0.3 -e MODE=udp rest2dhcp:test
+docker run --rm -e SERVER=172.17.0.3 -e MODE=dual rest2dhcp:test
+docker run --rm -e SERVER=172.17.0.3 -e MODE=packet rest2dhcp:test
 
 if test ! -z "$DHCP_ID" ; then 
     docker stop $DHCP_ID
