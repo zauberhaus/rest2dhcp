@@ -78,6 +78,7 @@ func GetRootCmd() *RootCommand {
 				signal.Notify(done, os.Interrupt, syscall.SIGINT)
 
 				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 
 				server := service.NewServer(&rootCmd.config, service.Version)
 				server.Start(ctx)
@@ -88,8 +89,6 @@ func GetRootCmd() *RootCommand {
 				log.Printf("Got %v", s.String())
 
 				signal.Reset(syscall.SIGINT)
-
-				cancel()
 
 				<-server.Done
 				log.Println("Done.")
