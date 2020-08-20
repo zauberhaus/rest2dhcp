@@ -131,7 +131,7 @@ func TestStoreTouch(t *testing.T) {
 		t.Fatalf("Lease %v not found", xid)
 	}
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	if store.Has(xid) {
 		t.Fatalf("Auto remove for %v failed", xid)
