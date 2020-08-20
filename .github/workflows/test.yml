@@ -31,3 +31,6 @@ jobs:
   
       - name: Run udp tests
         run: docker run --rm -e SERVER=${{ steps.dhcp.outputs.ip }} -e MODE=udp rest2dhcp:test  
+
+      - name: Stop DHCP
+        run: docker stop ${{ steps.dhcp.outputs.id }}  
