@@ -57,7 +57,7 @@ jobs:
         echo ::set-output name=docker_image::docker.io/zauberhaus/rest2dhcp
         echo ::set-output name=version::${GITHUB_REF#refs/*/}
         echo ::set-output name=hash::${GITHUB_SHA}
-        if echo "${GITHUB_REF#refs/*/}" | egrep "^v[0-9]+\.[0-9]+\.[0-9]+$" > /dev/null ; then
+        if echo "${GITHUB_REF#refs/*/}" | egrep "^v[1-9][0-9]*\.[0-9]+\.[0-9]+$" > /dev/null ; then
           echo ::set-output name=pre-release::false
         else
           echo ::set-output name=prerelease::true
