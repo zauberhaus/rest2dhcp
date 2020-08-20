@@ -130,7 +130,7 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 
 	// Manipulate modtime of swagger file to invalidate cache
 	file, ok := _escData["/api/swagger.yaml"]
-	if ok {
+	if ok && version != nil {
 		file.modtime = time.Now().Unix()
 		data, err := decode(file.compressed)
 		if err == nil {

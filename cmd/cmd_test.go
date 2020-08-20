@@ -125,9 +125,9 @@ func TestRunServerArgs(t *testing.T) {
 		},
 		{
 			Name: "IP",
-			Args: []string{"-s", "3.3.3.3", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8080"},
+			Args: []string{"-s", "127.0.0.1", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8080", "-v"},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Remote.To4(), net.IP{3, 3, 3, 3})
+				assert.Equal(t, s.Config.Remote.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Relay.To4(), net.IP{4, 4, 4, 4})
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
@@ -209,7 +209,7 @@ func TestRunServerEnv(t *testing.T) {
 			Env: map[string]string{
 				"LISTEN": "127.0.0.1:8080",
 				"CLIENT": "127.0.0.1",
-				"SERVER": "10.199.178.131",
+				"SERVER": "127.0.0.1",
 				"MODE":   "dual",
 			},
 			Check: func(t *testing.T, s *service.Server) {

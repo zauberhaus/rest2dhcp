@@ -16,9 +16,9 @@ echo "DHCP server runs on $DHCP_IP"
 echo "build test container"
 docker build -t rest2dhcp:test -f Dockerfile.wf .
 
-docker run --rm -e SERVER=172.17.0.3 -e MODE=udp rest2dhcp:test
-docker run --rm -e SERVER=172.17.0.3 -e MODE=dual rest2dhcp:test
-docker run --rm -e SERVER=172.17.0.3 -e MODE=packet rest2dhcp:test
+docker run --rm -e SERVER=172.17.0.3 -e MODE=udp rest2dhcp:test go test -v ./cmd
+#docker run --rm -e SERVER=172.17.0.3 -e MODE=dual rest2dhcp:test
+#docker run --rm -e SERVER=172.17.0.3 -e MODE=packet rest2dhcp:test
 
 if test ! -z "$DHCP_ID" ; then 
     docker stop $DHCP_ID
