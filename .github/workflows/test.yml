@@ -17,6 +17,20 @@ jobs:
           go-version: ~1.14
         id: go      
 
-      - name: Run tests
-        run: ./scripts/test-local-dhcp.sh  
+      - name: Start DHCP server
+        id: dhcp
+        run: |
+          docker build -t dhcp -f Dockerfile.dhcp .
+          DHCP_ID=`docker run -d --rm --name dhcp dhcp`  
+          DHCP_IP=`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' dhcp`
+          echo ::set-output name=id::${DHCP_ID}
+          echo ::set-output name=ip::${DHCP_IP}
+
+      - name: Build test container
+        run: docker build -t rest2dhcp:test -f Dockerfile.wf .  
   
+      - name: Run udp tests
+        run: docker run --rm -e SERVER=${{ steps.dhcp.outputs.ip }} -e MODE=udp rest2dhcp:test  
+
+      - name: Stop DHCP
+        run: docker stop ${{ steps.dhcp.outputs.id }}  
