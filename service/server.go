@@ -164,7 +164,10 @@ func (s *Server) Start(ctx context.Context) {
 		<-ctx.Done()
 		s.client.Stop()
 
-		if err := s.Shutdown(ctx); err != nil {
+		ctx2, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := s.Shutdown(ctx2); err != nil {
 			log.Fatalf("Server Shutdown Failed:%+v", err)
 		}
 
