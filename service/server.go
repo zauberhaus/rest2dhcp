@@ -164,11 +164,11 @@ func (s *Server) Start(ctx context.Context) {
 		<-ctx.Done()
 		s.client.Stop()
 
-		ctx2, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		if err := s.Shutdown(ctx2); err != nil {
-			log.Fatalf("Server Shutdown Failed:%+v", err)
+			log.Infof("Server Shutdown Failed:%+v", err)
 		}
 
 		log.Print("Server stopped")
