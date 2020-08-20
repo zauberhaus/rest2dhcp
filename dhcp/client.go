@@ -203,7 +203,7 @@ func (c *Client) Start() {
 							}
 
 						} else {
-							logErrorf(dhcp.Xid, "Unknown DHCP response id=%x", dhcp.Xid)
+							logErrorf(dhcp.Xid, "Unknown DHCP response")
 						}
 					}()
 				} else {
@@ -399,12 +399,13 @@ func (c *Client) discover(ctx context.Context, conn Connection, hostname string,
 
 		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
 
+		c.store.Set(dhcp)
 		c1, c2 := conn.Send(dhcp.DHCP4)
 		select {
 		case err := <-c2:
+			c.store.Remove(dhcp.Xid)
 			chan1 <- NewLeaseError(err)
 		case <-c1:
-			c.store.Set(dhcp)
 			select {
 			case <-dhcp.Done:
 				chan1 <- dhcp
@@ -430,13 +431,12 @@ func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease 
 		logDebugf(request.Xid, "Send DHCP %s", strings.ToUpper(msgType.String()))
 		lease.SetMsgType(layers.DHCPMsgTypeRequest)
 
+		c.store.Set(lease)
 		c1, c2 := conn.Send(request)
 		select {
 		case err := <-c2:
 			chan1 <- NewLeaseError(err)
 		case <-c1:
-			lease.SetMsgType(layers.DHCPMsgTypeRequest)
-			c.store.Set(lease)
 			select {
 			case <-lease.Done:
 				chan1 <- lease
@@ -569,6 +569,6 @@ func logError(xid uint32, args ...interface{}) {
 
 func logErrorf(xid uint32, format string, args ...interface{}) {
 	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
+		"xid": fmt.Sprintf("%x", xid),
 	}).Errorf(format, args...)
 }
