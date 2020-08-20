@@ -8,6 +8,7 @@ on:
 
 jobs:
   release-tests:
+    name: Release Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -64,7 +65,7 @@ jobs:
         fi
       
     - name: Set up Docker Buildx      
-      uses: crazy-max/ghaction-docker-buildx@v3      
+      uses: crazy-max/ghaction-docker-buildx@v2      
           
     - name: Log into registry
       if: success()
