@@ -42,20 +42,21 @@ type ConnectionType string
 
 // Existing connection types
 const (
-	AutoDetect   ConnectionType = "auto"
-	DefaultRelay ConnectionType = "udp"
-	Relay        ConnectionType = "packet"
-	Fritzbox     ConnectionType = "fritzbox"
-	BrokenRelay  ConnectionType = "broken"
+	AutoDetect ConnectionType = "auto"
+	UDP        ConnectionType = "udp"
+	Dual       ConnectionType = "dual"
+	Fritzbox   ConnectionType = "fritzbox"
+	Broken     ConnectionType = "broken"
+	Packet     ConnectionType = "packet"
 )
 
 // AllConnectionTypes is a list of all possible connection types
 var AllConnectionTypes = []string{
-	AutoDetect.String(),
-	DefaultRelay.String(),
-	Relay.String(),
+	UDP.String(),
+	Dual.String(),
 	Fritzbox.String(),
-	BrokenRelay.String(),
+	Packet.String(),
+	Broken.String(),
 }
 
 func (c ConnectionType) String() string {
@@ -68,14 +69,16 @@ func (c *ConnectionType) Parse(txt string) error {
 	case string(AutoDetect):
 	case "":
 		*c = AutoDetect
-	case string(DefaultRelay):
-		*c = DefaultRelay
-	case string(Relay):
-		*c = Relay
+	case string(UDP):
+		*c = UDP
+	case string(Dual):
+		*c = Dual
+	case string(Packet):
+		*c = Packet
 	case string(Fritzbox):
 		*c = Fritzbox
-	case string(BrokenRelay):
-		*c = BrokenRelay
+	case string(Broken):
+		*c = Broken
 	default:
 		return fmt.Errorf("Unknown connection type '%s'", txt)
 	}

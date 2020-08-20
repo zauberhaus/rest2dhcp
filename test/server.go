@@ -68,8 +68,8 @@ func (s *TestServer) check() bool {
 }
 
 func (s *TestServer) setup() (*service.Server, context.CancelFunc) {
-	local := net.ParseIP(os.Getenv("LOCAL"))
-	remote := net.ParseIP(os.Getenv("REMOTE"))
+	local := net.ParseIP(os.Getenv("CLIENT"))
+	remote := net.ParseIP(os.Getenv("SERVER"))
 	relay := net.ParseIP(os.Getenv("RELAY"))
 
 	mode := dhcp.AutoDetect
@@ -84,6 +84,7 @@ func (s *TestServer) setup() (*service.Server, context.CancelFunc) {
 		Timeout:     30 * time.Second,
 		DHCPTimeout: 3 * time.Second,
 		Retry:       15 * time.Second,
+		Verbose:     true,
 	}
 
 	server := service.NewServer(&config, NewTestVersion())

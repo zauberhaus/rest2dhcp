@@ -114,7 +114,7 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 	client.mode = connType
 
 	switch connType {
-	case DefaultRelay:
+	case UDP:
 		client.conn = NewUDPConn(&net.UDPAddr{
 			IP:   local,
 			Port: 67,
@@ -122,7 +122,7 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 			IP:   remote,
 			Port: 67,
 		})
-	case Relay:
+	case Dual:
 		client.conn = NewDualConn(&net.UDPAddr{
 			IP:   local,
 			Port: 67,
@@ -138,10 +138,18 @@ func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionTyp
 			IP:   remote,
 			Port: 67,
 		}, false)
-	case BrokenRelay:
+	case Broken:
 		client.conn = NewRawConn(&net.UDPAddr{
 			IP:   local,
 			Port: 68,
+		}, &net.UDPAddr{
+			IP:   remote,
+			Port: 67,
+		})
+	case Packet:
+		client.conn = NewRawConn(&net.UDPAddr{
+			IP:   local,
+			Port: 67,
 		}, &net.UDPAddr{
 			IP:   remote,
 			Port: 67,
@@ -481,10 +489,10 @@ func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
 			}
 		}
 	} else if remote.Equal(net.IP{192, 168, 43, 1}) {
-		return BrokenRelay
+		return Broken
 	}
 
-	return DefaultRelay
+	return UDP
 }
 
 func (c *Client) getHardwareAddr(name string) net.HardwareAddr {

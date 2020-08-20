@@ -120,7 +120,7 @@ func TestRunServerArgs(t *testing.T) {
 			Name: "Mode",
 			Args: []string{"-m", "udp"},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Mode, dhcp.DefaultRelay)
+				assert.Equal(t, s.Config.Mode, dhcp.UDP)
 			},
 		},
 		{
@@ -201,7 +201,7 @@ func TestRunServerEnv(t *testing.T) {
 				"MODE": "broken",
 			},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Mode, dhcp.BrokenRelay)
+				assert.Equal(t, s.Config.Mode, dhcp.Broken)
 			},
 		},
 		{
@@ -210,13 +210,13 @@ func TestRunServerEnv(t *testing.T) {
 				"LISTEN": "127.0.0.1:8080",
 				"CLIENT": "127.0.0.1",
 				"SERVER": "10.199.178.131",
-				"MODE":   "packet",
+				"MODE":   "dual",
 			},
 			Check: func(t *testing.T, s *service.Server) {
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
-				assert.Equal(t, s.Config.Mode, dhcp.Relay)
+				assert.Equal(t, s.Config.Mode, dhcp.Dual)
 			},
 		},
 		{
@@ -283,7 +283,7 @@ func TestRunServerConfigFile(t *testing.T) {
 				assert.Equal(t, net.IP{127, 0, 0, 1}, s.Config.Local.To4())
 				assert.Equal(t, net.IP{2, 2, 2, 2}, s.Config.Remote.To4())
 				assert.Equal(t, net.IP{3, 3, 3, 3}, s.Config.Relay.To4())
-				assert.Equal(t, dhcp.BrokenRelay, s.Config.Mode)
+				assert.Equal(t, dhcp.Broken, s.Config.Mode)
 				assert.Equal(t, 13*time.Minute, s.Config.Timeout)
 				assert.Equal(t, 27*time.Second, s.Config.DHCPTimeout)
 				assert.Equal(t, 38*time.Second, s.Config.Retry)

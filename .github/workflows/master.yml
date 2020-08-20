@@ -15,13 +15,23 @@ env:
   IMAGE_NAME: image
 
 jobs:
-  # Push image to GitHub Packages.
-  # See also https://docs.docker.com/docker-hub/builds/
-  master:
-    # Ensure test job passes before pushing image.
-
+  test-master:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Set up Go 1.14
+        uses: actions/setup-go@v2.1.2
+        with:
+          go-version: ~1.14
+        id: go      
+
+      - name: Run tests
+        run: ./scripts/test-local-dhcp.sh  
+  
+  master:
+    runs-on: ubuntu-latest
+    needs: test-master
 
     steps:
       - uses: actions/checkout@v2

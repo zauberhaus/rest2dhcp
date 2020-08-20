@@ -7,7 +7,7 @@ RELAY=`echo $ROUTE |  awk '{ print $7}'`
 IMAGE="rest2dhcp:latest"
 
 if test ! -f "`pwd`/rest2dhcp"; then
-    echo "Build appliaction"
+    echo "Build application"
     ./build.sh
 fi
 

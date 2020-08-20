@@ -50,9 +50,10 @@ The gateway has four different implementations for the DHCP connection and an au
 | Mode      | Description                               | Test system  |
 |-----------|-------------------------------------------|---|
 | auto      | A very simple auto-detection (only for development and testing) ||
-| udp       | A UDP connection using port 67 for incoming and outgoing traffic | openwrt-19.07|
-| packet    | Like the UDP connection, but with a UDP packet connection for outgoing traffic |openwrt-19.07, Fritz!Box 7590|
+| udp       | A UDP connection using port 67 for incoming and outgoing traffic |openwrt-19.07<br>ISC DHCP|
+| dual      | Like the UDP connection, but with a UDP packet connection for outgoing traffic |openwrt-19.07<br>ISC DHCP|
 | fritzbox  | A UDP packet connection sending DHCP packages with increasing src ports to port 67 and a UDP listener on port 67 | Fritz!Box 7590 |   
+| packet    | A packet listener using port 67 for incoming and port 67 for outgoing traffic |openwrt-19.07<br>ISC DHCP|
 | broken    | A packet listener using port 68 for incoming and port 67 for outgoing traffic |Android 10 WiFi hotspot |
 
 Openwrt needs a very long time to respond on an IP request for an unknown host. 
