@@ -33,4 +33,7 @@ jobs:
         run: docker run --rm -e SERVER=${{ steps.dhcp.outputs.ip }} -e MODE=udp rest2dhcp:test  
 
       - name: Stop DHCP
-        run: docker stop ${{ steps.dhcp.outputs.id }}  
+        if: ${{ always() }}
+        run: |
+          docker logs ${{ steps.dhcp.outputs.id }}  
+          docker stop ${{ steps.dhcp.outputs.id }}  
