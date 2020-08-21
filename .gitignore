@@ -19,5 +19,5 @@ example/example
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-service/static.go
+service/doc.go
 doc/swagger.yaml
