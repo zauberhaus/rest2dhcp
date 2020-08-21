@@ -1,5 +1,7 @@
 # rest2dhcp
 
+![Tests](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
+![Release](https://github.com/zauberhaus/rest2dhcp/workflows/Release/badge.svg)
 
 #### A REST web service gateway to a DHCP server
 The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.  
@@ -65,6 +67,36 @@ Therefore, the fritzbox connector increases the source port after each request.
 
 The Android WiFi hotspot Android incorrectly sends responses to DHCP relay requests to port 68.
 
+## Docker usage
+
+You can also use rest2dhcp as a docker-container.
+
+```bash
+SERVER=`IP of the DHCP server`
+RELAY=`External IP of Docker host`
+
+docker run -e SERVER=$SERVER -e RELAY=$RELAY -e MODE=udp -p 8080:8080 -p 67:67/udp  zauberhaus/rest2dhcp
+```
+
+You can use curl to test the server
+```bash
+curl http://localhost:8080/version
+```
+and should get a result like this
+
+```yaml
+buildDate: 2020-08-20T23:08:04UTC
+compiler: gc
+gitCommit: 8af5609
+gitTreeState: dirty
+gitVersion: v0.9.22
+goVersion: go1.14.7
+platform: linux/amd64
+dhcp: 192.168.1.1
+relay: 192.168.1.4
+mode: packet
+```
+
 ## API
 
 The service provides an online documentation under the following url:
@@ -124,13 +156,13 @@ Requirements:
 ./build.sh
 ```
 
-## Docker build without Go
+## Docker build
 
 Requirements:
 * Docker
 
 ```
-./scripts/build-docker.sh
+sudo ./scripts/build-docker.sh
 ```
 
-The script creates a folder build with the executable
+The script creates a folder ./build with the executable
