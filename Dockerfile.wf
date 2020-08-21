@@ -10,6 +10,8 @@ ENV CLIENT ""
 ENV RELAY ""
 ENV MODE "auto"
 
+RUN go get github.com/mjibson/esc
+
 COPY . $SRC
 RUN cd $SRC && go mod download
 WORKDIR $SRC
