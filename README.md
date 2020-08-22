@@ -1,8 +1,8 @@
 # rest2dhcp
 
-![Tests](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
-![Release](https://github.com/zauberhaus/rest2dhcp/workflows/Release/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/zauberhaus/rest2dhcp)](https://goreportcard.com/badge/github.com/zauberhaus/rest2dhcp)
+[![Tests](https://github.com/zauberhaus/rest2dhcp/actions?query=workflow%3ATests)](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
+[![Release](https://github.com/zauberhaus/rest2dhcp/actions?query=workflow%3ARelease)](https://github.com/zauberhaus/rest2dhcp/workflows/Release/badge.svg)
+[![Go Report Card](https://goreportcard.com/report/github.com/zauberhaus/rest2dhcp)](https://goreportcard.com/badge/github.com/zauberhaus/rest2dhcp)
 
 #### A REST web service gateway to a DHCP server
 The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.  
