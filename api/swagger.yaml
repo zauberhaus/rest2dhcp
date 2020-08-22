@@ -1,0 +1,244 @@
+swagger: "2.0"
+info:
+  description: "A REST web service gateway to a DHCP server
+  The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.
+  Therefore, it's possible to request IPs for more than one hostname or MAC address."  
+  version: "1.0.0"
+  title: "rest2dhcp"
+  license:
+    name: "Apache 2.0"
+    url: "http://www.apache.org/licenses/LICENSE-2.0.html"
+host: "localhost:8080"
+tags:
+- name: "lease"
+  description: "Manage dhcp leases"
+- name: "info"
+  description: "Show service info"
+schemes:
+- "http"
+paths:
+  /ip/{hostname}:
+    get:
+      tags:
+      - "lease"
+      summary: "get a lease with a generated mac address"
+      description: "Request a IP lease for a given hostname and a generated mac address."
+      operationId: getLeaseByHostName
+      produces:
+      - "application/xml"
+      - "application/json"
+      parameters:
+      - name: "hostname"
+        in: "path"
+        description: "Hostname"
+        required: true
+        type: string
+        format: hostname
+      responses:
+        "200":
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/Lease"
+        "400":
+          description: "Invalid parameter"
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+        
+  /ip/{hostname}/{mac}:
+    get:
+      tags:
+      - "lease"
+      summary: "get a lease"
+      description: "Request a IP lease for a given hostname and mac address."
+      operationId: getLease
+      produces:
+      - "application/xml"
+      - "application/json"
+      parameters:
+      - name: "hostname"
+        in: "path"
+        description: "Hostname"
+        required: true
+        type: "string"
+        format: hostname
+      - name: "mac"
+        in: "path"
+        description: "Mac address"
+        required: true
+        type: "string"
+        format: mac
+      responses:
+        "200":
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/Lease"
+        "400":
+          description: "Invalid parameter"
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+    
+  /ip/{hostname}/{mac}/{ip}:
+    get:
+      tags:
+      - "lease"
+      summary: "renew a lease"
+      description: "Renew an IP lease for a given hostname, mac and IP address."
+      operationId: renew
+      produces:
+      - "application/xml"
+      - "application/json"
+      parameters:
+      - name: "hostname"
+        in: "path"
+        description: "Hostname"
+        required: true
+        type: "string"
+        format: hostname
+      - name: "mac"
+        in: "path"
+        description: "Mac address"
+        required: true
+        type: "string"
+        format: mac
+      - name: "ip"
+        in: "path"
+        description: "IP of lease request"
+        required: true
+        type: "string"
+        format: ipv4
+      responses:
+        "200":
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/Lease"
+        "400":
+          description: "Invalid parameter"
+        "406":
+          description: "Invalid DHCP request"
+        "408":
+          description: "Timeout"
+        "415":
+          description: "Invalid media type"
+      
+          
+    delete:
+      tags:
+      - "lease"
+      summary: "release a lease"
+      description: "Release the IP for a given hostname, mac and IP address."
+      operationId: release
+      parameters:
+      - name: "hostname"
+        in: "path"
+        description: "Hostname"
+        required: true
+        type: "string"
+        format: hostname
+      - name: "mac"
+        in: "path"
+        description: "Mac address"
+        required: true
+        type: "string"
+        format: mac
+      - name: "ip"
+        in: "path"
+        description: "IP of lease request"
+        required: true
+        type: "string"
+        format: ipv4
+      responses:
+        "200":
+          description: "successful operation"
+        "400":
+          description: "Invalid parameter"
+  
+  /version:
+    get:
+      tags:
+      - "info"
+      summary: "version information"
+      description: "Returns the service version information"
+      operationId: version
+      produces:
+      - "application/xml"
+      - "application/json"
+      parameters: []
+      responses:
+        "200":
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/Version"
+
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "api_key"
+    in: "header"
+definitions:
+
+  Lease:
+    type: "object"
+    properties:
+      hostname:
+        type: string
+        format: hostname
+      mac:
+        type: "string"
+        format: mac
+      ip:
+        type: "string"
+        format: ipv4
+      mask:
+        type: "string"
+        format: ipv4
+      dns:
+        type: "string"
+        format: ipv4
+      router:
+        type: "string"
+        format: ipv4
+      renew:
+        type: "string"
+        format: date-time
+      rebind:
+        type: "string"
+        format: date-time
+      expire:
+        type: "string"
+        format: date-time
+
+  Version:
+    type: "object"
+    properties:
+      buildDate:
+        type: "string"
+        format: "date-time"
+      compiler:
+        type: "string"
+      gitCommit:
+        type: "string"
+      gitTreeState:
+        type: "string"
+      gitVersion:
+        type: "string"
+      goVersion:
+        type: "string"
+      platform:
+        type: "string"
+      dhcp:
+        type: "string"
+        pattern: ipv4
+      relay:
+        type: "string"
+        pattern: ipv4
+      mode:
+        type: "string"
+        enum: [udp, packet, fritzbox, broken]

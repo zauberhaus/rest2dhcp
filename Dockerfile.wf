@@ -1,0 +1,18 @@
+FROM golang:1.14-alpine
+
+RUN apk update && apk --no-cache upgrade && apk add --no-cache git
+RUN go get github.com/mjibson/esc
+
+ENV SRC /go/src/github.com/zauberhaus/rest2dhcp
+ENV CGO_ENABLED 0
+ENV SERVER ""
+ENV CLIENT ""
+ENV RELAY ""
+ENV MODE "auto"
+
+COPY . $SRC
+RUN cd $SRC && go mod download
+WORKDIR $SRC
+
+CMD cd $SRC && go generate ./... && go test -v ./cmd ./client ./dhcp ./service
+
