@@ -37,7 +37,7 @@ type Connection interface {
 	Block(ctx context.Context) chan bool
 }
 
-// ConnectionType is enumeration of teh connection types
+// ConnectionType is enumeration of the connection types
 type ConnectionType string
 
 // Existing connection types
