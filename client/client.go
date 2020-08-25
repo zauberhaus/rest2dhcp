@@ -28,19 +28,40 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Client is a go client to use the service
-type Client struct {
+// Client is a service client interface
+type Client interface {
+	SetContentType(contentType ContentType)
+	GetContentType() ContentType
+
+	Lease(ctx context.Context, hostname string, mac MAC) (*Lease, error)
+	Renew(ctx context.Context, hostname string, mac MAC, ip net.IP) (*Lease, error)
+	Release(ctx context.Context, hostname string, mac MAC, ip net.IP) error
+	Version(ctx context.Context) (*Version, error)
+}
+
+// clientImpl is a go client implementation
+type clientImpl struct {
 	url         string
-	ContentType ContentType
+	contentType ContentType
 }
 
 // NewClient initializes a new client
 // * @param url - url of the service
-func NewClient(url string) *Client {
-	return &Client{
+func NewClient(url string) Client {
+	return &clientImpl{
 		url:         url,
-		ContentType: JSON,
+		contentType: JSON,
 	}
+}
+
+// GetContentType returns the used content type (JSON, YAML or XML)
+func (c *clientImpl) SetContentType(contentType ContentType) {
+	c.contentType = contentType
+}
+
+// GetContentType returns the used content type (JSON, YAML or XML)
+func (c *clientImpl) GetContentType() ContentType {
+	return c.contentType
 }
 
 /*
@@ -51,7 +72,7 @@ Lease - request a IP lease for a given hostname and a generated mac address.
 
 @return Lease
 */
-func (c *Client) Lease(ctx context.Context, hostname string, mac MAC) (*Lease, error) {
+func (c *clientImpl) Lease(ctx context.Context, hostname string, mac MAC) (*Lease, error) {
 	if hostname == "" {
 		return nil, NewError(http.StatusBadRequest, "Empty hostname")
 	}
@@ -62,7 +83,7 @@ func (c *Client) Lease(ctx context.Context, hostname string, mac MAC) (*Lease, e
 		url += "/" + mac.String()
 	}
 
-	resp, err := c.request(ctx, "GET", url, c.ContentType)
+	resp, err := c.request(ctx, "GET", url, c.contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +115,7 @@ Renew an IP lease for a given hostname, mac and IP address.
 
 @return Lease
 */
-func (c *Client) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP) (*Lease, error) {
+func (c *clientImpl) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP) (*Lease, error) {
 	if hostname == "" {
 		return nil, NewError(http.StatusBadRequest, "Empty hostname")
 	}
@@ -109,7 +130,7 @@ func (c *Client) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP)
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip)
 
-	resp, err := c.request(ctx, "GET", url, c.ContentType)
+	resp, err := c.request(ctx, "GET", url, c.contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +160,7 @@ Release the IP for a given hostname, mac and IP address.
  * @param mac - Mac address
  * @param ip - IP address
 */
-func (c *Client) Release(ctx context.Context, hostname string, mac MAC, ip net.IP) error {
+func (c *clientImpl) Release(ctx context.Context, hostname string, mac MAC, ip net.IP) error {
 	if hostname == "" {
 		return NewError(http.StatusBadRequest, "Empty hostname")
 	}
@@ -154,7 +175,7 @@ func (c *Client) Release(ctx context.Context, hostname string, mac MAC, ip net.I
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip)
 
-	resp, err := c.request(ctx, "DELETE", url, c.ContentType)
+	resp, err := c.request(ctx, "DELETE", url, c.contentType)
 	if err != nil {
 		return err
 	}
@@ -177,10 +198,10 @@ Version returns the service version information
 
 @return Version
 */
-func (c *Client) Version(ctx context.Context) (*Version, error) {
+func (c *clientImpl) Version(ctx context.Context) (*Version, error) {
 	url := fmt.Sprintf("%s/version", c.url)
 
-	resp, err := c.request(ctx, "GET", url, c.ContentType)
+	resp, err := c.request(ctx, "GET", url, c.contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +224,7 @@ func (c *Client) Version(ctx context.Context) (*Version, error) {
 	return &info, nil
 }
 
-func (c *Client) request(ctx context.Context, method string, url string, mime ContentType) (*http.Response, error) {
+func (c *clientImpl) request(ctx context.Context, method string, url string, mime ContentType) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
@@ -220,7 +241,7 @@ func (c *Client) request(ctx context.Context, method string, url string, mime Co
 	return resp, nil
 }
 
-func (c *Client) read(resp *http.Response) ([]byte, ContentType, error) {
+func (c *clientImpl) read(resp *http.Response) ([]byte, ContentType, error) {
 	var contentType ContentType
 	value := resp.Header.Get("Content-Type")
 	contentType.Parse(value)
@@ -233,7 +254,7 @@ func (c *Client) read(resp *http.Response) ([]byte, ContentType, error) {
 	return data, contentType, nil
 }
 
-func (c *Client) unmarshal(data []byte, result interface{}, mime ContentType) error {
+func (c *clientImpl) unmarshal(data []byte, result interface{}, mime ContentType) error {
 	switch mime {
 	case YAML:
 		err := yaml.Unmarshal(data, result)

@@ -69,11 +69,11 @@ func TestClientVersion(t *testing.T) {
 			t.Parallel()
 
 			cl := client.NewClient(host)
-			cl.ContentType = tc.Mime
+			cl.SetContentType(tc.Mime)
 			ctx := context.Background()
 
 			version, err := cl.Version(ctx)
-			if cl.ContentType == client.Unknown {
+			if cl.GetContentType() == client.Unknown {
 				clientError, ok := err.(*client.Error)
 				if !ok {
 					t.Fatalf("Unexpected error type")
@@ -133,7 +133,7 @@ func TestClient(t *testing.T) {
 			//t.Parallel()
 
 			cl := client.NewClient(host)
-			cl.ContentType = tc.Mime
+			cl.SetContentType(tc.Mime)
 
 			ctx := context.Background()
 
