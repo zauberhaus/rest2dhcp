@@ -124,8 +124,8 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 			version.GitTreeState = "dirty"
 		}
 
-		log.Printf("Version:\n\n%v\n", server.Info)
-		log.Debugf("Config:\n\n%v\n", server.Config)
+		server.Info.Log()
+		server.Config.Log()
 	}
 
 	// Manipulate modtime of swagger file to invalidate cache
@@ -155,6 +155,7 @@ func (s *Server) Start(ctx context.Context) {
 		s.client.Start()
 
 		go func() {
+			log.Infof("Server listen on %v", s.Addr)
 			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("listen: %s\n", err)
 			}

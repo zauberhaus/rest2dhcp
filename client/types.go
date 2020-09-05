@@ -22,8 +22,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"gopkg.in/yaml.v3"
@@ -200,6 +204,26 @@ type Version struct {
 func (v *Version) String() string {
 	data, _ := yaml.Marshal(v)
 	return string(data)
+}
+
+// Log writes the current version info as log info
+func (v *Version) Log() {
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Infof("Version:\n\n%v\n", v)
+	} else {
+		log.WithFields(log.Fields{
+			"BuildDate":    v.BuildDate,
+			"Compiler":     v.Compiler,
+			"GitCommit":    v.GitCommit,
+			"GitTreeState": v.GitTreeState,
+			"GitVersion":   v.GitVersion,
+			"GoVersion":    v.GoVersion,
+			"Platform":     v.Platform,
+			"DHCPServer":   v.DHCPServer,
+			"RelayIP":      v.RelayIP,
+			"Mode":         v.Mode,
+		}).Info("Version")
+	}
 }
 
 // NewVersion creates a new version object

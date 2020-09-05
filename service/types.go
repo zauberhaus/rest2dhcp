@@ -20,12 +20,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/yaml.v3"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Key is the context key
@@ -98,4 +102,24 @@ type ServerConfig struct {
 func (c *ServerConfig) String() string {
 	data, _ := yaml.Marshal(c)
 	return string(data)
+}
+
+// Log writes the current config as log info
+func (c *ServerConfig) Log() {
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Infof("Config:\n\n%v\n", c)
+	} else {
+		log.WithFields(log.Fields{
+			"Local":       c.Local,
+			"Remote":      c.Remote,
+			"Relay":       c.Relay,
+			"Mode":        c.Mode,
+			"Listen":      c.Listen,
+			"Timeout":     c.Timeout,
+			"DHCPTimeout": c.DHCPTimeout,
+			"Retry":       c.Retry,
+			"Verbose":     c.Verbose,
+			"Quiet":       c.Quiet,
+		}).Info("Config")
+	}
 }

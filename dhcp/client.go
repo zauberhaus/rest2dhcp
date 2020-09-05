@@ -172,7 +172,7 @@ func (c *Client) Start() {
 			c3, c2 := c.conn.Receive()
 			select {
 			case err := <-c2:
-				log.Error(err)
+				log.Errorf("Receive error: %v", err)
 			case <-c.ctx.Done():
 				log.Info("DHCP client stopped")
 				close(c.Done)
