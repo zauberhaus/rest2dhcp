@@ -113,8 +113,6 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 			DstPort: layers.UDPPort(67),
 		}
 
-		logDebugf(dhcp.Xid, "Use port: %v", uint16(udp.SrcPort))
-
 		udp.SetNetworkLayerForChecksum(ip)
 
 		buf := gopacket.NewSerializeBuffer()

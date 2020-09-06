@@ -87,8 +87,8 @@ func NewQuery(request *http.Request) (*Query, error) {
 
 // ServerConfig describes the server configuration
 type ServerConfig struct {
-	Local       net.IP              `yaml:"local,omitempty" json:"local,omitempty" xml:"local,omitempty"`
-	Remote      net.IP              `yaml:"remote,omitempty" json:"remote,omitempty" xml:"remote,omitempty"`
+	Client      net.IP              `yaml:"client,omitempty" json:"client,omitempty" xml:"client,omitempty"`
+	Server      net.IP              `yaml:"server,omitempty" json:"server,omitempty" xml:"server,omitempty"`
 	Relay       net.IP              `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`
 	Mode        dhcp.ConnectionType `yaml:"mode,omitempty" json:"mode,omitempty" xml:"mode,omitempty"`
 	Listen      string              `yaml:"listen,omitempty" json:"listen,omitempty" xml:"listen,omitempty"`
@@ -110,8 +110,8 @@ func (c *ServerConfig) Log() {
 		log.Infof("Config:\n\n%v\n", c)
 	} else {
 		log.WithFields(log.Fields{
-			"Local":       c.Local,
-			"Remote":      c.Remote,
+			"Client":      c.Client,
+			"Server":      c.Server,
 			"Relay":       c.Relay,
 			"Mode":        c.Mode,
 			"Listen":      c.Listen,

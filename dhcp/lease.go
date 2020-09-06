@@ -248,6 +248,16 @@ func (d *DHCP4) GetSubnetMask() net.IP {
 	return nil
 }
 
+// GetHostname return the option layers.DHCPOptHostname
+func (d *DHCP4) GetHostname() string {
+	o := d.GetOption(layers.DHCPOptHostname)
+	if o != nil {
+		return string(o.Data)
+	}
+
+	return ""
+}
+
 // GetDNS return the option layers.DHCPOptDNS
 func (d *DHCP4) GetDNS() net.IP {
 	o := d.GetOption(layers.DHCPOptDNS)

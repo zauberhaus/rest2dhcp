@@ -112,8 +112,8 @@ func (r *RootCommand) GetServer() *service.Server {
 func (r *RootCommand) init() {
 	r.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default is $HOME/"+defaultConfigFilename+".yaml)")
 
-	r.Flags().IPVarP(&r.config.Remote, "server", "s", nil, "DHCP server ip")
-	r.Flags().IPVarP(&r.config.Local, "client", "c", nil, "Local IP for DHCP relay client")
+	r.Flags().IPVarP(&r.config.Server, "server", "s", nil, "DHCP server ip")
+	r.Flags().IPVarP(&r.config.Client, "client", "c", nil, "Local IP for DHCP relay client")
 	r.Flags().IPVarP(&r.config.Relay, "relay", "r", nil, "Relay IP for DHCP relay client")
 
 	r.Flags().StringVarP(&r.config.Listen, "listen", "l", ":8080", "Address of the web service")

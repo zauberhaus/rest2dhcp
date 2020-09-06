@@ -127,9 +127,9 @@ func TestRunServerArgs(t *testing.T) {
 			Name: "IP",
 			Args: []string{"-s", "127.0.0.1", "-c", "127.0.0.1", "-r", "4.4.4.4", "-l", "127.0.0.1:8080", "-v"},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Remote.To4(), net.IP{127, 0, 0, 1})
+				assert.Equal(t, s.Config.Server.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Relay.To4(), net.IP{4, 4, 4, 4})
-				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
+				assert.Equal(t, s.Config.Client.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
 			},
 		},
@@ -213,8 +213,8 @@ func TestRunServerEnv(t *testing.T) {
 				"MODE":   "dual",
 			},
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
-				assert.Equal(t, s.Config.Local.To4(), net.IP{127, 0, 0, 1})
+				assert.Equal(t, s.Config.Client.To4(), net.IP{127, 0, 0, 1})
+				assert.Equal(t, s.Config.Client.To4(), net.IP{127, 0, 0, 1})
 				assert.Equal(t, s.Config.Listen, "127.0.0.1:8080")
 				assert.Equal(t, s.Config.Mode, dhcp.Dual)
 			},
@@ -280,8 +280,8 @@ func TestRunServerConfigFile(t *testing.T) {
 			Name:     "test_config",
 			Filename: "test_config.yaml",
 			Check: func(t *testing.T, s *service.Server) {
-				assert.Equal(t, net.IP{127, 0, 0, 1}, s.Config.Local.To4())
-				assert.Equal(t, net.IP{2, 2, 2, 2}, s.Config.Remote.To4())
+				assert.Equal(t, net.IP{127, 0, 0, 1}, s.Config.Client.To4())
+				assert.Equal(t, net.IP{2, 2, 2, 2}, s.Config.Server.To4())
 				assert.Equal(t, net.IP{3, 3, 3, 3}, s.Config.Relay.To4())
 				assert.Equal(t, dhcp.Broken, s.Config.Mode)
 				assert.Equal(t, 13*time.Minute, s.Config.Timeout)
@@ -319,6 +319,32 @@ func TestRunServerConfigFile(t *testing.T) {
 
 	}
 }
+
+/*
+func TestInvalidServerAddress(t *testing.T) {
+	c := cmd.GetRootCmd()
+	c.SetArgs([]string{"-v", "-s", "192.168.1.13"})
+
+	r := runner{}
+	started, done := r.start(t, c)
+
+	if assert.True(t, <-started) {
+		server := c.GetServer()
+		if assert.NotNil(t, server) {
+			result := <-r.get(context.Background(), "http://localhost:8080/ip/test")
+			if assert.NotNil(t, result) {
+
+			}
+		}
+
+		r.stop(t)
+
+		<-done
+	}
+
+	fmt.Println("Done.")
+}
+*/
 
 type runner struct {
 	pid int
@@ -367,6 +393,26 @@ func (r *runner) start(t *testing.T, c *cmd.RootCommand) (chan bool, chan bool) 
 	}()
 
 	return started, done
+}
+
+func (r *runner) get(ctx context.Context, u string) chan *http.Response {
+	rc := make(chan *http.Response)
+
+	go func() {
+		client := http.Client{}
+
+		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+		response, err := client.Do(req)
+		if err == nil {
+			rc <- response
+			return
+		}
+
+		fmt.Printf("http.Get %v\n", err)
+		rc <- nil
+	}()
+
+	return rc
 }
 
 func (r *runner) stop(t *testing.T) {

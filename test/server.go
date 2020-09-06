@@ -76,8 +76,8 @@ func (s *TestServer) setup() (*service.Server, context.CancelFunc) {
 	mode.Parse(os.Getenv("MODE"))
 
 	config := service.ServerConfig{
-		Local:       local,
-		Remote:      remote,
+		Client:      local,
+		Server:      remote,
 		Relay:       relay,
 		Mode:        mode,
 		Listen:      ":8080",

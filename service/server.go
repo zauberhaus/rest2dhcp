@@ -104,7 +104,7 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 	server.Addr = config.Listen
 	server.Done = make(chan bool)
 
-	server.client = dhcp.NewClient(config.Local, config.Remote, config.Relay, config.Mode, config.DHCPTimeout, config.Retry)
+	server.client = dhcp.NewClient(config.Client, config.Server, config.Relay, config.Mode, config.DHCPTimeout, config.Retry)
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(server.ContentMiddleware)
@@ -124,8 +124,8 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 			version.GitTreeState = "dirty"
 		}
 
-		server.Info.Log()
 		server.Config.Log()
+		server.Info.Log()
 	}
 
 	// Manipulate modtime of swagger file to invalidate cache

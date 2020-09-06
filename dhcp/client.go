@@ -182,7 +182,12 @@ func (c *Client) Start() {
 					go func() {
 						lease, ok := c.store.Get(dhcp.Xid)
 						if ok {
-							logDebugf(dhcp.Xid, "Got DHCP %s", dhcp.GetMsgType())
+							logDebugfExt(log.Fields{
+								"xid":      fmt.Sprintf("%v", dhcp.Xid),
+								"hostname": dhcp.GetHostname(),
+								"mac":      dhcp.ClientHWAddr,
+								"ip":       dhcp.YourClientIP,
+							}, "Got DHCP %s", dhcp.GetMsgType())
 							if lease.CheckResponseType(dhcp) {
 								msgType := dhcp.GetMsgType()
 								if msgType == layers.DHCPMsgTypeNak {
@@ -194,7 +199,12 @@ func (c *Client) Start() {
 									}
 								}
 
-								logDebugf(lease.Xid, "Change status %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
+								logDebugfExt(log.Fields{
+									"xid":      fmt.Sprintf("%v", lease.Xid),
+									"hostname": lease.Hostname,
+									"mac":      lease.ClientHWAddr,
+									"ip":       dhcp.YourClientIP,
+								}, "Change status %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
 								lease.DHCP4 = dhcp
 								lease.Touch()
 								lease.Done <- true
@@ -254,16 +264,22 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 
 		for {
 			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.discover(ctx2, c.conn, hostname, chaddr, nil)
+			xid := GenerateXID()
+			ch := c.discover(ctx2, xid, c.conn, hostname, chaddr, nil)
 			lease = c.wait(ctx2, ch, cancel)
 
 			if lease != nil {
-				logDebugf(lease.Xid, "DHCP discover finished (%v)", lease.YourClientIP)
+				logDebugfExt(log.Fields{
+					"xid":      fmt.Sprintf("%v", lease.Xid),
+					"hostname": lease.Hostname,
+					"mac":      lease.ClientHWAddr,
+					"ip":       lease.YourClientIP,
+				}, "DHCP discover finished")
 				break
 			} else {
-				log.Infof("Timeout, wait %v", c.retry)
+				logInfof(xid, "Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					logInfo(xid, "Retry...")
 				} else {
 					break
 				}
@@ -281,13 +297,18 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 			lease2 = c.wait(ctx2, ch, cancel)
 
 			if lease2 != nil {
-				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
+				logDebugfExt(log.Fields{
+					"xid":      fmt.Sprintf("%v", lease2.Xid),
+					"hostname": lease2.Hostname,
+					"mac":      lease2.ClientHWAddr,
+					"ip":       lease2.YourClientIP,
+				}, "DHCP request finished")
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
 				logInfof(lease.Xid, "Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					logInfo(lease.Xid, "Retry...")
 				} else {
 					break
 				}
@@ -330,13 +351,18 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 			lease2 = c.wait(ctx2, ch, cancel)
 
 			if lease2 != nil {
-				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
+				logDebugfExt(log.Fields{
+					"xid":      fmt.Sprintf("%v", lease2.Xid),
+					"hostname": lease2.Hostname,
+					"mac":      lease2.ClientHWAddr,
+					"ip":       lease2.YourClientIP,
+				}, "DHCP request finished")
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				log.Infof("Timeout, wait %v", c.retry)
+				logInfof(xid, "Timeout, wait %v", c.retry)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					logInfo(xid, "Retry...")
 				} else {
 					break
 				}
@@ -369,7 +395,12 @@ func (c *Client) Release(ctx context.Context, hostname string, chaddr net.Hardwa
 		request.RelayAgentIP = c.relay
 		request.ClientIP = ip
 
-		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeRelease.String()))
+		logDebugfExt(log.Fields{
+			"xid":      fmt.Sprintf("%v", xid),
+			"hostname": hostname,
+			"mac":      chaddr,
+			"ip":       ip.String(),
+		}, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeRelease.String()))
 
 		c1, c2 := c.conn.Send(request)
 		select {
@@ -386,18 +417,20 @@ func (c *Client) Release(ctx context.Context, hostname string, chaddr net.Hardwa
 	return chan1
 }
 
-func (c *Client) discover(ctx context.Context, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
+func (c *Client) discover(ctx context.Context, xid uint32, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
 	chan1 := make(chan *Lease)
 
 	go func() {
-
-		xid := GenerateXID()
 
 		dhcp := NewLease(layers.DHCPMsgTypeDiscover, xid, chaddr, options)
 		dhcp.SetHostname(hostname)
 		dhcp.RelayAgentIP = c.relay
 
-		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
+		logDebugfExt(log.Fields{
+			"xid":      fmt.Sprintf("%v", xid),
+			"hostname": hostname,
+			"mac":      chaddr,
+		}, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
 
 		c.store.Set(dhcp)
 		c1, c2 := conn.Send(dhcp.DHCP4)
@@ -428,7 +461,12 @@ func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease 
 
 		request := lease.GetRequest(msgType, options)
 
-		logDebugf(request.Xid, "Send DHCP %s", strings.ToUpper(msgType.String()))
+		logDebugfExt(log.Fields{
+			"xid":      fmt.Sprintf("%v", lease.Xid),
+			"hostname": lease.Hostname,
+			"mac":      lease.ClientHWAddr,
+			"ip":       lease.YourClientIP,
+		}, "Send DHCP %s", strings.ToUpper(msgType.String()))
 		lease.SetMsgType(layers.DHCPMsgTypeRequest)
 
 		c.store.Set(lease)
@@ -547,6 +585,10 @@ func logDebugf(xid uint32, format string, args ...interface{}) {
 	log.WithFields(log.Fields{
 		"xid": fmt.Sprintf("%v", xid),
 	}).Debugf(format, args...)
+}
+
+func logDebugfExt(fields log.Fields, format string, args ...interface{}) {
+	log.WithFields(fields).Debugf(format, args...)
 }
 
 func logInfo(xid uint32, args ...interface{}) {
