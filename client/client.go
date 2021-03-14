@@ -107,10 +107,16 @@ func (c *Client) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP)
 		return nil, NewError(http.StatusBadRequest, "Missing ip address")
 	}
 
-	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip)
+	if ip.To4() == nil {
+		return nil, NewError(http.StatusBadRequest, "Not a valid IP4 address")
+	}
+
+	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip.To4())
 
 	resp, err := c.request(ctx, "GET", url, c.ContentType)
 	if err != nil {
+		fmt.Println(err)
+
 		return nil, err
 	}
 

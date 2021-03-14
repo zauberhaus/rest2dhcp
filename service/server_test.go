@@ -14,192 +14,801 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//go:generate esc -o doc.go -ignore /doc/.*map -pkg service ../doc ../api
+
 package service_test
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
+	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
+	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"github.com/zauberhaus/rest2dhcp/logger"
+	"github.com/zauberhaus/rest2dhcp/mock"
 	"github.com/zauberhaus/rest2dhcp/service"
-	helper_test "github.com/zauberhaus/rest2dhcp/test"
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	url        = "http://localhost:8080/ip/"
-	versionURL = "http://localhost:8080/version"
-	metricsURL = "http://localhost:8080/metrics"
+//go:generate mockgen -source ../dhcp/client.go  -package mock -destination ../mock/client.go
 
-	buildDate    = "2020-08-11T10:06:44NZST"
-	gitCommit    = "03fd9a8658c81c088fb548cc43b56703e6ee145b"
-	gitVersion   = "v0.0.1"
-	gitTreeState = "dirty"
-)
+var _port int32 = 57011
 
-var (
-	server = helper_test.TestServer{}
-)
-
-func TestMain(m *testing.M) {
-	server.Run(m)
+func getPort() int32 {
+	atomic.AddInt32(&_port, 1)
+	_port++
+	return _port
 }
 
-func TestService(t *testing.T) {
-	testCases := []struct {
-		Name     string
-		Hostname string
-		Mime     client.ContentType
-	}{
-		{
-			Name:     "Test workflow via HTTP request with content type XML",
-			Hostname: "server-test-xml",
-			Mime:     client.XML,
-		},
-		{
-			Name:     "Test workflow via HTTP request with content type YAML",
-			Hostname: "server-test-yaml",
-			Mime:     client.YAML,
-		},
-		{
-			Name:     "Test workflow via HTTP request with content type JSON",
-			Hostname: "server-test-json",
-			Mime:     client.JSON,
-		},
-		{
-			Name:     "Test workflow via HTTP request without a content type",
-			Hostname: "server-test-unknown",
-			Mime:     client.Unknown,
-		},
+func TestNewServer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	dhcp := mock.NewMockDHCPClient(ctrl)
+
+	dhcp.EXPECT().Start().DoAndReturn(func() chan bool {
+		rc := make(chan bool)
+		close(rc)
+		return rc
+	})
+
+	dhcp.EXPECT().Stop()
+
+	port := getPort()
+
+	config := &service.ServerConfig{
+		Listen: fmt.Sprintf(":%v", port),
 	}
+	version := client.NewVersion("now", "123456", "0001", "dirty")
 
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
-			mime := tc.Mime
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 1)
 
-			hostname := tc.Hostname
+	server := service.NewServer(logger)
+	assert.NotNil(t, server)
 
-			resp := request(t, "GET", url+hostname, mime)
-			result := checkResult(t, resp, hostname, mime)
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Init(ctx, config, version, dhcp)
+	server.Start(ctx)
 
-			resp2 := request(t, "GET", url+hostname+"/"+result.Mac.String(), mime)
-			result2 := checkResult(t, resp2, hostname, mime)
+	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+		"Accept": "text/dummy",
+	})
 
-			if result.IP.String() != result2.IP.String() {
-				t.Fatalf("Different IPs %v != %v", result.IP, result2.IP)
-			}
+	assert.Equal(t, 415, response.StatusCode)
 
-			resp = request(t, "GET", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
-			result = checkResult(t, resp, hostname, mime)
-
-			resp = request(t, "DELETE", url+hostname+"/"+result.Mac.String()+"/"+result.IP.String(), mime)
-
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("Wrong http status: %v", resp.Status)
-			}
-		})
-	}
+	cancel()
+	<-server.Done()
 }
 
-func TestVersion(t *testing.T) {
-	testCases := []struct {
-		Name string
-		Mime client.ContentType
+func TestServer_Version(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 6)
+	server, _, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
 	}{
 		{
-			Name: "Read version via HTTP request with content type XML",
-			Mime: client.XML,
+			name:   "Invalid Accept Content Type",
+			method: "GET",
+			url:    "http://localhost:" + port + "/version",
+			header: map[string]string{
+				"Accept": "text/dummy",
+			},
+			statuscode: 415,
 		},
 		{
-			Name: "Read version via HTTP request with content type YAML",
-			Mime: client.YAML,
+			name:       "Call API doc",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/api",
+			statuscode: 200,
 		},
 		{
-			Name: "Read version via HTTP request with content type JSON",
-			Mime: client.JSON,
+			name:       "GetVersion_json",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/version",
+			statuscode: 200,
+			content:    client.JSON,
+			result:     "version.json",
 		},
 		{
-			Name: "Read version via HTTP request without a content type",
-			Mime: client.Unknown,
+			name:       "GetVersion_yaml",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/version",
+			statuscode: 200,
+			content:    client.YAML,
+			result:     "version.yaml",
+		},
+		{
+			name:       "GetVersion_xml",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/version",
+			statuscode: 200,
+			content:    client.XML,
+			result:     "version.xml",
 		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
 
-	for _, tc := range testCases {
-		tc := tc // We run our tests twice one with this line & one without
-		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
-			mime := tc.Mime
-
-			resp := request(t, "GET", versionURL, mime)
-
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("Wrong http status: %v", resp.Status)
+				tt.header["Accept"] = tt.content
 			}
 
-			if mime == client.Unknown {
-				mime = client.YAML
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
 			}
 
-			value := resp.Header.Get("Content-Type")
-			if client.ContentType(value) != mime {
-				t.Fatalf("Wrong content type: %v != %v", value, mime)
-			}
-
-			data, err := ioutil.ReadAll(resp.Body)
+			body, err := ioutil.ReadAll(response.Body)
 			if err != nil {
 				t.Fatalf("%v", err)
 			}
 
-			var version client.Version
-			unmarshal(t, data, &version, mime)
+			if tt.statuscode == 200 && tt.result != "" {
 
-			if server.IsStarted() {
-				assert.Equal(t, service.Version, &version, "Invalid Version info")
-			} else {
-				if version.GitCommit == "" {
-					t.Errorf("Invalid version info:\n%v", version)
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
 				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
 			}
+
 		})
 	}
+
+	cancel()
+	<-server.Done()
+
 }
 
-func TestUnsupportedMediaType(t *testing.T) {
-	req, err := http.NewRequest("GET", versionURL, nil)
-	if err != nil {
-		t.Fatalf("%v", err)
+func TestServer_GetLease(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 4)
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{
+		{
+			name:       "GetLease hostname",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname",
+			statuscode: 200,
+			content:    client.JSON,
+			result:     "lease.json",
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLease(layers.DHCPMsgTypeAck, 99, net.HardwareAddr{1, 2, 3, 4, 5, 6}, nil)
+
+				lease.YourClientIP = net.IP{192, 168, 1, 99}
+
+				rc <- lease
+				return rc
+			},
+		},
+		{
+			name:       "GetLease hostname/mac",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname/09:08:07:06:05:04",
+			statuscode: 200,
+			content:    client.JSON,
+			result:     "lease2.json",
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLease(layers.DHCPMsgTypeAck, 99, chaddr, nil)
+
+				lease.YourClientIP = net.IP{192, 168, 1, 99}
+
+				rc <- lease
+				return rc
+			},
+		},
+		{
+			name:       "GetLeaseNAK",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname",
+			statuscode: 406,
+			content:    client.JSON,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLease(layers.DHCPMsgTypeNak, 99, chaddr, nil)
+				lease.SetError(fmt.Errorf("NAK"))
+
+				rc <- lease
+				return rc
+			},
+			body: "NAK\n",
+		},
+		{
+			name:       "GetLeaseFailed",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname",
+			statuscode: 400,
+			content:    client.JSON,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLeaseError(fmt.Errorf("TestError"))
+				rc <- lease
+				return rc
+			},
+			body: "TestError\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			dhcpClient.EXPECT().GetLease(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(tt.do)
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
 	}
 
-	req.Header.Set("Accept", "text/dummy")
+	cancel()
+	<-server.Done()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	if resp.StatusCode != http.StatusUnsupportedMediaType {
-		t.Fatalf("Unexpected response status: %v", resp.Status)
-	}
 }
 
-func TestMetrics(t *testing.T) {
+func TestServer_GetLease_Invalid(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
+	server, _, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{
+		{
+			name:       "InvalidMacAddress",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
+		},
+		{
+			name:       "InvalidHostname",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "Invalid hostname\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
+	}
+
+	cancel()
+	<-server.Done()
+
 }
 
-func request(t *testing.T, method string, url string, mime client.ContentType) *http.Response {
+func TestServer_Renew_Invalid(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	server, _, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{
+		{
+			name:       "InvalidMacAddress",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1/192.168.1.1",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
+		},
+		{
+			name:       "InvalidIP",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.456",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "Invalid IP format\n",
+		},
+		{
+			name:       "InvalidHostname",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06/192.168.1.4",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "Invalid hostname\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
+	}
+
+	cancel()
+	<-server.Done()
+
+}
+
+func TestServer_Release_Invalid(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	server, _, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{
+		{
+			name:       "InvalidMacAddress",
+			method:     "DELETE",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1/192.168.1.1",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
+		},
+		{
+			name:       "InvalidIP",
+			method:     "DELETE",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.456",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "Invalid IP format\n",
+		},
+		{
+			name:       "InvalidHostname",
+			method:     "GET",
+			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06/192.168.1.4",
+			statuscode: 400,
+			content:    client.JSON,
+			body:       "Invalid hostname\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
+	}
+
+	cancel()
+	<-server.Done()
+
+}
+
+func TestServer_Renew_(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{{
+		name:       "Renew",
+		method:     "GET",
+		url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+		statuscode: 200,
+		content:    client.JSON,
+		result:     "lease.json",
+		do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
+			rc := make(chan *dhcp.Lease, 1)
+			lease := dhcp.NewLease(layers.DHCPMsgTypeAck, 99, chaddr, nil)
+
+			lease.YourClientIP = ip
+			lease.Hostname = hostname
+
+			rc <- lease
+			return rc
+		},
+	},
+		{
+			name:       "Renew NAK",
+			method:     "GET",
+			url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			statuscode: 406,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLease(layers.DHCPMsgTypeNak, 99, chaddr, nil)
+				lease.SetError(fmt.Errorf("NAK"))
+
+				rc <- lease
+				return rc
+			},
+			body: "NAK\n",
+		},
+		{
+			name:       "Renew Fail",
+			method:     "GET",
+			url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			statuscode: 400,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				lease := dhcp.NewLeaseError(fmt.Errorf("TestError"))
+				rc <- lease
+				return rc
+			},
+			body: "TestError\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			dhcpClient.EXPECT().Renew(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(tt.do)
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
+	}
+
+	cancel()
+	<-server.Done()
+
+}
+
+func TestServer_Release(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		header     map[string]string
+		statuscode int
+		content    string
+		result     string
+		body       string
+		do         interface{}
+	}{
+		{
+			name:       "Release",
+			method:     "DELETE",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			statuscode: 200,
+			content:    client.JSON,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
+				rc := make(chan error, 1)
+				rc <- nil
+				return rc
+			},
+			body: "Ok.\n",
+		},
+		{
+			name:       "ReleaseFail",
+			method:     "DELETE",
+			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			statuscode: 400,
+			content:    client.JSON,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
+				rc := make(chan error, 1)
+				rc <- fmt.Errorf("ReleaseFail")
+				return rc
+			},
+			body: "ReleaseFail\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			dhcpClient.EXPECT().Release(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(tt.do)
+
+			if tt.content != "" {
+				if tt.header == nil {
+					tt.header = make(map[string]string, 1)
+				}
+
+				tt.header["Accept"] = tt.content
+			}
+
+			response := request(t, tt.method, tt.url, tt.header)
+			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
+				t.Fail()
+			}
+
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			if tt.statuscode == 200 && tt.result != "" {
+
+				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+
+				assert.Equal(t, string(data2), string(body))
+			} else if tt.body != "" {
+				assert.Equal(t, tt.body, string(body))
+			}
+
+		})
+	}
+
+	cancel()
+	<-server.Done()
+
+}
+
+func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (background.Server, *mock.MockDHCPClient, context.CancelFunc) {
+	dhcpClient := mock.NewMockDHCPClient(ctrl)
+
+	port := getPort()
+
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
+		rc := make(chan bool)
+		close(rc)
+		return rc
+	})
+
+	dhcpClient.EXPECT().Stop()
+
+	config := &service.ServerConfig{
+		Listen: fmt.Sprintf(":%v", port),
+	}
+	version := client.NewVersion("now", "123456", "0001", "dirty")
+
+	server := service.NewServer(logger)
+	assert.NotNil(t, server)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Init(ctx, config, version, dhcpClient)
+	<-server.Start(ctx)
+
+	time.Sleep(100 * time.Microsecond)
+
+	return server, dhcpClient, cancel
+}
+
+func request(t *testing.T, method string, url string, header map[string]string) *http.Response {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
-	if mime != client.Unknown {
-		req.Header.Set("Accept", string(mime))
+	if header != nil {
+		for key, value := range header {
+			req.Header.Set(key, value)
+		}
 	}
 
 	client := &http.Client{}

@@ -1,0 +1,9 @@
+{
+  "buildDate": "now",
+  "compiler": "gc",
+  "gitCommit": "123456",
+  "gitTreeState": "dirty",
+  "gitVersion": "0001",
+  "goVersion": "go1.16",
+  "platform": "linux/amd64"
+}

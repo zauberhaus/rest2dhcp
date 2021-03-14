@@ -21,13 +21,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"github.com/zauberhaus/rest2dhcp/mock"
 )
 
 func TestStoreSimple(t *testing.T) {
-	store := dhcp.NewStore(5 * time.Second)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
+
+	store := dhcp.NewStore(5*time.Second, logger)
 	var xid1 uint32 = 99
 	var xid2 uint32 = 98
 
@@ -78,7 +86,13 @@ func TestStoreSimple(t *testing.T) {
 }
 
 func TestStoreRun(t *testing.T) {
-	store := dhcp.NewStore(1 * time.Second)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 2, 0)
+
+	store := dhcp.NewStore(200*time.Millisecond, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -101,7 +115,13 @@ func TestStoreRun(t *testing.T) {
 }
 
 func TestStoreTouch(t *testing.T) {
-	store := dhcp.NewStore(1 * time.Second)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 1, 0, 0, 0)
+
+	store := dhcp.NewStore(1*time.Hour, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -111,30 +131,15 @@ func TestStoreTouch(t *testing.T) {
 	lease := dhcp.NewLease(layers.DHCPMsgTypeDiscover, xid, nil, nil)
 	store.Set(lease)
 
-	if !store.Has(xid) {
-		t.Fatalf("Lease %v not found", xid)
+	item, ok := store.GetItem(xid)
+	if assert.True(t, ok) {
+		expire := item.Expire
+
+		if !store.Touch(xid) {
+			t.Fatalf("Lease %v not found", xid)
+		}
+
+		diff := item.Expire.Sub(expire)
+		assert.Greater(t, diff, 0*time.Second)
 	}
-
-	time.Sleep(500 * time.Millisecond)
-
-	if !store.Touch(xid) {
-		t.Fatalf("Lease %v not found", xid)
-	}
-
-	if store.Touch(100) {
-		t.Fatalf("Not existing lease %v found", 100)
-	}
-
-	time.Sleep(750 * time.Millisecond)
-
-	if !store.Has(xid) {
-		t.Fatalf("Lease %v not found", xid)
-	}
-
-	time.Sleep(2 * time.Second)
-
-	if store.Has(xid) {
-		t.Fatalf("Auto remove for %v failed", xid)
-	}
-
 }

@@ -20,36 +20,53 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/zauberhaus/rest2dhcp/logger"
 
+	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
 
+type UDPPacketConn interface {
+	net.PacketConn
+	net.Conn
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+	ReadFromUDP(b []byte) (int, *net.UDPAddr, error)
+}
+
 // UDPConn is a simple upd connection using the same src and destination port
 type UDPConn struct {
-	conn   *net.UDPConn
+	conn   UDPPacketConn
 	inmux  sync.Mutex
 	outmux sync.Mutex
+
+	logger logger.Logger
 }
 
 // NewUDPConn initializes a new udp connection
-func NewUDPConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
-	sc, err := net.DialUDP("udp4", local, remote)
-	if err != nil {
-		log.Fatal(err)
+func NewUDPConn(local *net.UDPAddr, remote *net.UDPAddr, conn UDPPacketConn, logger logger.Logger) Connection {
+	if conn == nil {
+		sc, err := net.DialUDP("udp4", local, remote)
+		if err != nil {
+			logger.Fatal(err)
+		} else {
+			conn = sc
+		}
 	}
 
-	log.Printf("Connect %s -> %s", sc.LocalAddr().String(), sc.RemoteAddr().String())
+	logger.Infof("Connect %s -> %s", conn.LocalAddr().String(), conn.RemoteAddr().String())
 
 	return &UDPConn{
-		conn: sc,
+		conn:   conn,
+		logger: logger,
 	}
 }
 
 // Close the connection
 func (c *UDPConn) Close() error {
-	log.Printf("Close %s -> %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
+	c.logger.Infof("Close %s -> %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 	return c.conn.Close()
 }
 
@@ -64,16 +81,40 @@ func (c *UDPConn) Remote() *net.UDPAddr {
 }
 
 // Send a DHCP data packet
-func (c *UDPConn) Send(dhcp *DHCP4) (chan int, chan error) {
-	chan1 := make(chan int)
-	chan2 := make(chan error)
+func (c *UDPConn) Send(ctx context.Context, dhcp *DHCP4) (chan int, chan error) {
+	chan1 := make(chan int, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Send context done: %v", ctx.Err())
+			c.conn.SetWriteDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 		c.outmux.Lock()
 		defer c.outmux.Unlock()
 
-		buf := dhcp.serialize()
+		if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			chan2 <- err
+			return
+		}
+
+		buf, err := dhcp.serialize()
+		if err != nil {
+			chan2 <- err
+			return
+		}
+
 		i, err := c.conn.Write(buf)
+		close(done)
+
 		if err != nil {
 			chan2 <- err
 		} else {
@@ -85,16 +126,34 @@ func (c *UDPConn) Send(dhcp *DHCP4) (chan int, chan error) {
 }
 
 // Receive a DHCP data packet
-func (c *UDPConn) Receive() (chan *DHCP4, chan error) {
-	chan1 := make(chan *DHCP4)
-	chan2 := make(chan error)
+func (c *UDPConn) Receive(ctx context.Context) (chan *DHCP4, chan error) {
+	chan1 := make(chan *DHCP4, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Receive context done: %v", ctx.Err())
+			c.conn.SetReadDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 		c.inmux.Lock()
 		defer c.inmux.Unlock()
 
+		if err := c.conn.SetReadDeadline(time.Now().Add(24 * time.Hour)); err != nil {
+			chan2 <- err
+			return
+		}
+
 		buffer := make([]byte, 2048)
 		n, _, err := c.conn.ReadFromUDP(buffer)
+		close(done)
 
 		if err != nil {
 			chan2 <- err
@@ -102,7 +161,7 @@ func (c *UDPConn) Receive() (chan *DHCP4, chan error) {
 		}
 
 		var dhcp2 layers.DHCPv4
-		err = dhcp2.DecodeFromBytes(buffer[:n], nil)
+		err = dhcp2.DecodeFromBytes(buffer[:n], gopacket.NilDecodeFeedback)
 		if err != nil {
 			chan2 <- err
 			return
@@ -118,9 +177,9 @@ func (c *UDPConn) Receive() (chan *DHCP4, chan error) {
 // Block outgoing traffic until context is finished
 func (c *UDPConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
+	c.outmux.Lock()
 
 	go func() {
-		c.outmux.Lock()
 		defer c.outmux.Unlock()
 		<-ctx.Done()
 		close(rc)

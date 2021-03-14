@@ -18,47 +18,61 @@ package client_test
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
-	"net/http"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
+	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"github.com/zauberhaus/rest2dhcp/logger"
+	"github.com/zauberhaus/rest2dhcp/mock"
 	"github.com/zauberhaus/rest2dhcp/service"
-	helper_test "github.com/zauberhaus/rest2dhcp/test"
 )
 
 var (
-	host   = "http://localhost:8080"
-	server = helper_test.TestServer{}
+	_port   int32 = 51231
+	host          = "http://localhost"
+	ip            = net.IP{192, 168, 99, 173}
+	netmask       = net.IP{255, 255, 255, 0}
+	dns           = net.IP{192, 168, 99, 1}
 )
 
-func TestMain(m *testing.M) {
-	server.Run(m)
+func getPort() int32 {
+	atomic.AddInt32(&_port, 1)
+	_port++
+	return _port
 }
 
 func TestClientVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 4)
+
+	server, _, cancel := start(t, ctrl, logger)
+
 	testCases := []struct {
-		//Name string
 		Mime client.ContentType
 	}{
 		{
-			//Name: "XML",
 			Mime: client.XML,
 		},
 		{
-			//Name: "YAML",
 			Mime: client.YAML,
 		},
 		{
-			//Name: "JSON",
 			Mime: client.JSON,
 		},
 		{
-			//Name: "Read version via HTTP request without a content type",
 			Mime: client.Unknown,
 		},
 	}
@@ -66,9 +80,8 @@ func TestClientVersion(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc // We run our tests twice one with this line & one without
 		t.Run(tc.Mime.String(), func(t *testing.T) {
-			t.Parallel()
 
-			cl := client.NewClient(host)
+			cl := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
 			cl.ContentType = tc.Mime
 			ctx := context.Background()
 
@@ -83,18 +96,25 @@ func TestClientVersion(t *testing.T) {
 
 			} else if assert.NoError(t, err, "client.Version failed") {
 				if assert.NotNil(t, version, "Empty version info") {
-					if server.IsStarted() {
-						assert.Equal(t, service.Version, version, "Invalid Version info")
-					} else {
-						assert.NotEmpty(t, version.GitCommit)
-					}
+					assert.Equal(t, getVersion(), version, "Invalid Version info")
 				}
 			}
 		})
 	}
+
+	cancel()
+	<-server.Done()
 }
 
 func TestClient(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 3, 10)
+
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+
 	testCases := []struct {
 		Name     string
 		Mime     client.ContentType
@@ -130,14 +150,71 @@ func TestClient(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc // We run our tests twice one with this line & one without
 		t.Run(tc.Name, func(t *testing.T) {
-			//t.Parallel()
 
-			cl := client.NewClient(host)
+			if tc.Mime != client.Unknown {
+				dhcpClient.EXPECT().GetLease(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+					rc := make(chan *dhcp.Lease, 1)
+					var mac net.HardwareAddr = net.HardwareAddr(tc.Mac)
+					lease := dhcp.NewLease(layers.DHCPMsgTypeAck, 12345, mac, nil)
+					lease.Touch()
+					lease.YourClientIP = ip
+					lease.Hostname = tc.Hostname
+					lease.SetOption(layers.DHCPOptSubnetMask, netmask)
+					lease.SetOption(layers.DHCPOptDNS, dns)
+					lease.SetOption(layers.DHCPOptRouter, dns)
+
+					buffer := []byte{0, 0, 0, 0}
+					binary.BigEndian.PutUint32(buffer, uint32((24 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptLeaseTime, buffer)
+
+					binary.BigEndian.PutUint32(buffer, uint32((12 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptT1, buffer)
+
+					binary.BigEndian.PutUint32(buffer, uint32((6 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptT2, buffer)
+
+					rc <- lease
+					return rc
+				})
+
+				dhcpClient.EXPECT().Renew(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
+					rc := make(chan *dhcp.Lease, 1)
+					var mac net.HardwareAddr = net.HardwareAddr(tc.Mac)
+					lease := dhcp.NewLease(layers.DHCPMsgTypeAck, 12345, mac, nil)
+					lease.Touch()
+					lease.YourClientIP = ip
+					lease.Hostname = tc.Hostname
+					lease.SetOption(layers.DHCPOptSubnetMask, netmask)
+					lease.SetOption(layers.DHCPOptDNS, dns)
+					lease.SetOption(layers.DHCPOptRouter, dns)
+
+					buffer := []byte{0, 0, 0, 0}
+					binary.BigEndian.PutUint32(buffer, uint32((24 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptLeaseTime, buffer)
+
+					binary.BigEndian.PutUint32(buffer, uint32((12 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptT1, buffer)
+
+					binary.BigEndian.PutUint32(buffer, uint32((6 * time.Hour).Seconds()))
+					lease.SetOption(layers.DHCPOptT2, buffer)
+
+					rc <- lease
+					return rc
+				})
+
+				dhcpClient.EXPECT().Release(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
+					rc := make(chan error, 1)
+					rc <- nil
+					return rc
+				})
+			}
+
+			cl := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
 			cl.ContentType = tc.Mime
 
 			ctx := context.Background()
 
-			lease, err := cl.Lease(ctx, tc.Hostname+"-1", nil)
+			lease, err := cl.Lease(ctx, tc.Hostname, nil)
 
 			if tc.Mime == client.Unknown {
 				clientError, ok := err.(*client.Error)
@@ -151,63 +228,218 @@ func TestClient(t *testing.T) {
 			}
 
 			if assert.NoError(t, err) {
+				if assert.NotNil(t, lease) {
+					assert.Equal(t, ip, lease.IP.To4())
+					assert.Equal(t, tc.Mac, lease.Mac)
+					assert.Equal(t, tc.Hostname, lease.Hostname)
+					assert.Equal(t, netmask, lease.Mask.To4())
+					assert.Equal(t, dns, lease.DNS.To4())
+					assert.Equal(t, dns, lease.Router.To4())
 
-				if assert.NotNil(t, lease) && assert.NotNil(t, lease.IP) && assert.NotNil(t, lease.Mac) {
+					assert.Greater(t, 1*time.Second, lease.Expire.Sub(time.Now().Add(24*time.Hour)))
+					assert.Greater(t, 1*time.Second, lease.Rebind.Sub(time.Now().Add(12*time.Hour)))
+					assert.Greater(t, 1*time.Second, lease.Renew.Sub(time.Now().Add(6*time.Hour)))
 
-					lease2, err := cl.Lease(ctx, lease.Hostname, lease.Mac)
-
+					lease, err = cl.Renew(ctx, lease.Hostname, lease.Mac, lease.IP)
 					if assert.NoError(t, err) {
+						if assert.NotNil(t, lease) {
+							assert.Equal(t, ip, lease.IP.To4())
+							assert.Equal(t, tc.Mac, lease.Mac)
+							assert.Equal(t, tc.Hostname, lease.Hostname)
+							assert.Equal(t, netmask, lease.Mask.To4())
+							assert.Equal(t, dns, lease.DNS.To4())
+							assert.Equal(t, dns, lease.Router.To4())
 
-						assert.Equal(t, lease2.Mac, lease.Mac)
-						assert.Equal(t, lease2.IP, lease.IP)
+							assert.Greater(t, 1*time.Second, lease.Expire.Sub(time.Now().Add(24*time.Hour)))
+							assert.Greater(t, 1*time.Second, lease.Rebind.Sub(time.Now().Add(12*time.Hour)))
+							assert.Greater(t, 1*time.Second, lease.Renew.Sub(time.Now().Add(6*time.Hour)))
 
-						if server.GetMode() == dhcp.Fritzbox {
-							checkDNSExists(t, lease)
-						}
-
-						lease3, err := cl.Lease(ctx, tc.Hostname+"-2", tc.Mac)
-
-						if assert.NoError(t, err) {
-
-							assert.Equal(t, tc.Mac, lease3.Mac)
-							assert.NotEqual(t, lease.IP, lease3.IP)
-
-							err1 := cl.Release(ctx, lease.Hostname, lease.Mac, lease.IP)
-							err2 := cl.Release(ctx, lease3.Hostname, lease3.Mac, lease3.IP)
-
-							if assert.NoError(t, err1) && assert.NoError(t, err2) {
-								if server.GetMode() == dhcp.Fritzbox {
-									checkDNSNotExists(t, lease)
-									checkDNSNotExists(t, lease3)
-								}
-							}
-						}
-
-						lease4, err := cl.Renew(ctx, lease.Hostname, lease.Mac, lease.IP)
-						if assert.NoError(t, err) {
-							if assert.NotNil(t, lease4) {
-
-								assert.Equal(t, lease.Hostname, lease4.Hostname)
-								assert.Equal(t, lease.Mac, lease4.Mac)
-								assert.Equal(t, lease.IP, lease4.IP)
-
-								if server.GetMode() == dhcp.Fritzbox {
-									checkDNSExists(t, lease4)
-								}
-
-								err = cl.Release(ctx, lease4.Hostname, lease4.Mac, lease4.IP)
-								assert.NoError(t, err)
-							}
+							err = cl.Release(ctx, lease.Hostname, lease.Mac, lease.IP)
+							assert.NoError(t, err)
 						}
 					}
 				}
 			}
-			fmt.Printf("DONE %v\n", tc.Name)
+
+			logger.Testf("DONE %v", tc.Name)
+		})
+	}
+
+	cancel()
+	<-server.Done()
+}
+
+func TestClient_GetLease_Fail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 1)
+
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+
+	testCases := []struct {
+		Name     string
+		Server   string
+		Mime     client.ContentType
+		Hostname string
+		Mac      client.MAC
+		Code     int
+	}{
+		{
+			Name:     "Response with status code 400",
+			Server:   fmt.Sprintf("%s:%v", host, server.Port()),
+			Mime:     client.YAML,
+			Hostname: "fail-yaml",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			Code:     400,
+		},
+		{
+			Name:     "Unknown host",
+			Mime:     client.YAML,
+			Hostname: "fail-yaml",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			Code:     -1,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc // We run our tests twice one with this line & one without
+		t.Run(tc.Name, func(t *testing.T) {
+
+			if tc.Server != "" {
+				dhcpClient.EXPECT().GetLease(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+					rc := make(chan *dhcp.Lease, 1)
+					lease := dhcp.NewLeaseError(fmt.Errorf("failed"))
+					rc <- lease
+					return rc
+				})
+			}
+
+			cl := client.NewClient(tc.Server)
+			cl.ContentType = tc.Mime
+
+			ctx := context.Background()
+
+			lease, err := cl.Lease(ctx, tc.Hostname, nil)
+
+			clientError, ok := err.(*client.Error)
+			if !ok {
+				assert.Fail(t, "Expect an error")
+			}
+
+			assert.Equal(t, tc.Code, clientError.Code(), "Unexpected status code")
+
+			assert.Nil(t, lease)
+		})
+	}
+
+	cancel()
+	<-server.Done()
+}
+
+func TestClient_Lease_InvalidParameter(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		mac      client.MAC
+	}{
+		{
+			name:     "EmptyHostname",
+			hostname: "",
+			mac:      client.MAC{1, 2, 3, 4, 5, 6},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := client.NewClient(fmt.Sprintf("%s:%v", host, 12345))
+			ctx := context.Background()
+
+			lease, err := c.Lease(ctx, tt.hostname, tt.mac)
+			assert.Nil(t, lease)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestClient_Renew_InvalidParameter(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		mac      client.MAC
+		ip       net.IP
+	}{
+		{
+			name: "Empty Hostname",
+			mac:  client.MAC{1, 2, 3, 4, 5, 6},
+			ip:   net.IP{1, 2, 3, 4},
+		},
+		{
+			name:     "Empty Mac",
+			hostname: "hostname",
+			ip:       net.IP{1, 2, 3, 4},
+		},
+		{
+			name:     "Empty IP",
+			hostname: "hostname",
+			mac:      client.MAC{1, 2, 3, 4, 5, 6},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := client.NewClient(fmt.Sprintf("%s:%v", host, 12345))
+			ctx := context.Background()
+
+			lease, err := c.Renew(ctx, tt.hostname, tt.mac, tt.ip)
+			assert.Nil(t, lease)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestClient_Release_InvalidParameter(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		mac      client.MAC
+		ip       net.IP
+	}{
+		{
+			name: "Empty Hostname",
+			mac:  client.MAC{1, 2, 3, 4, 5, 6},
+			ip:   net.IP{1, 2, 3, 4},
+		},
+		{
+			name:     "Empty Mac",
+			hostname: "hostname",
+			ip:       net.IP{1, 2, 3, 4},
+		},
+		{
+			name:     "Empty IP",
+			hostname: "hostname",
+			mac:      client.MAC{1, 2, 3, 4, 5, 6},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := client.NewClient(fmt.Sprintf("%s:%v", host, 12345))
+			ctx := context.Background()
+
+			err := c.Release(ctx, tt.hostname, tt.mac, tt.ip)
+			assert.Error(t, err)
 		})
 	}
 }
 
 func TestClientInvalidLease(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 2)
+
+	server, _, cancel := start(t, ctrl, logger)
+
 	testCases := []struct {
 		Name     string
 		Hostname string
@@ -237,9 +469,8 @@ func TestClientInvalidLease(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc // We run our tests twice one with this line & one without
 		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
 			ctx := context.Background()
-			cl := client.NewClient(host)
+			cl := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
 			_, err := cl.Lease(ctx, tc.Hostname, tc.Mac)
 
 			if assert.Error(t, err) {
@@ -250,9 +481,21 @@ func TestClientInvalidLease(t *testing.T) {
 			}
 		})
 	}
+
+	cancel()
+	<-server.Done()
 }
 
 func TestClientInvalidRenew(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 2)
+
+	server, _, cancel := start(t, ctrl, logger)
+	port := server.Port()
+
 	testCases := []struct {
 		Name     string
 		Hostname string
@@ -282,27 +525,32 @@ func TestClientInvalidRenew(t *testing.T) {
 			Code:     400,
 		},
 		{
-			Name:     "Empty ip",
+			Name:     "Invalid mac",
+			Hostname: "test",
+			Mac:      client.MAC{1, 2, 3, 4, 5, 6, 7},
+			IP:       net.IP{1, 2, 3, 4},
+			Code:     400,
+		},
+		{
+			Name:     "Empty IP",
 			Hostname: "test",
 			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
 			IP:       nil,
 			Code:     400,
 		},
 		{
-			Name:     "Invalid lease",
+			Name:     "Invalid ip",
 			Hostname: "test",
 			Mac:      client.MAC{1, 2, 3, 4, 5, 6},
-			IP:       net.IP{1, 2, 3, 4},
-			Code:     http.StatusNotAcceptable,
+			IP:       net.IP{1, 2, 3, 4, 5},
+			Code:     400,
 		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc // We run our tests twice one with this line & one without
 		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
 			ctx := context.Background()
-			cl := client.NewClient(host)
+			cl := client.NewClient(fmt.Sprintf("%s:%v", host, port))
 			_, err := cl.Renew(ctx, tc.Hostname, tc.Mac, tc.IP)
 
 			if assert.Error(t, err) {
@@ -313,68 +561,47 @@ func TestClientInvalidRenew(t *testing.T) {
 			}
 		})
 	}
+
+	cancel()
+	<-server.Done()
 }
 
-func checkDNSExists(t *testing.T, l *client.Lease) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (background.Server, *mock.MockDHCPClient, context.CancelFunc) {
+	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
-	rc := false
-	empty := true
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
+		rc := make(chan bool)
+		close(rc)
+		return rc
+	})
 
-	for {
-		ips, err := net.LookupIP(l.Hostname)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				assert.Fail(t, "DNS entry %v not found", l.Hostname)
-				break
-			case <-time.After(100 * time.Millisecond):
-				empty = false
-				fmt.Print(".")
-				continue
-			}
-		}
+	dhcpClient.EXPECT().Stop()
 
-		for _, ip := range ips {
-			if ip.String() == l.IP.String() {
-				rc = true
-				break
-			}
-		}
-
-		if !rc {
-			assert.Fail(t, "Wrong IPs for DNS entry %v not found", l.Hostname)
-		}
-
-		break
+	config := &service.ServerConfig{
+		Verbose: true,
+		Listen:  fmt.Sprintf(":%v", getPort()),
 	}
 
-	if !empty {
-		fmt.Println("")
-	}
+	server := service.NewServer(logger)
+	assert.NotNil(t, server)
 
-	return rc
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Init(ctx, config, getVersion(), dhcpClient)
+	<-server.Start(ctx)
+
+	time.Sleep(100 * time.Microsecond)
+
+	return server, dhcpClient, cancel
 }
 
-func checkDNSNotExists(t *testing.T, l *client.Lease) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	for {
-		_, err := net.LookupIP(l.Hostname)
-		if err == nil {
-			select {
-			case <-ctx.Done():
-				fmt.Print("\n")
-				return assert.Fail(t, "DNS entry %v found", l.Hostname)
-			case <-time.After(100 * time.Millisecond):
-				fmt.Print(".")
-				continue
-			}
-		}
-
-		fmt.Print("\n")
-		return true
+func getVersion() *client.Version {
+	return &client.Version{
+		BuildDate:    "01-01-2001",
+		Compiler:     "myCompiler",
+		GitCommit:    "abcdefg",
+		GitTreeState: "very dirty",
+		GitVersion:   "nix",
+		GoVersion:    runtime.Version(),
+		Platform:     fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH),
 	}
 }

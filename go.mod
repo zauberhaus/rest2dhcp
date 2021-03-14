@@ -1,22 +1,24 @@
 module github.com/zauberhaus/rest2dhcp
 
-go 1.14
+go 1.16
 
 require (
 	github.com/fsnotify/fsnotify v1.4.9
-	github.com/google/gopacket v1.1.18
-	github.com/gorilla/handlers v1.4.2
-	github.com/gorilla/mux v1.7.4
-	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
+	github.com/golang/mock v1.5.0
+	github.com/google/gopacket v1.1.19
+	github.com/gorilla/mux v1.8.0
+	github.com/justinas/alice v1.2.0
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/prometheus/client_golang v1.7.1
-	github.com/sirupsen/logrus v1.6.0
-	github.com/spf13/cobra v1.0.0
+	github.com/prometheus/client_golang v1.9.0
+	github.com/rs/zerolog v1.20.0
+	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
-	github.com/stretchr/testify v1.6.1
-	golang.org/x/net v0.0.0-20200813134508-3edf25e44fcc
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	gopkg.in/yaml.v2 v2.3.0
-	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
+	github.com/stretchr/testify v1.7.0
+	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
+	google.golang.org/grpc v1.36.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	k8s.io/api v0.20.4
+	k8s.io/apimachinery v0.20.4
+	k8s.io/client-go v0.20.4
 )

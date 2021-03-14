@@ -26,29 +26,38 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/google/gopacket/layers"
-	"github.com/zauberhaus/rest2dhcp/routing"
+	"github.com/zauberhaus/rest2dhcp/background"
+	"github.com/zauberhaus/rest2dhcp/logger"
 )
+
+type DHCPClient interface {
+	Start() chan bool
+	Stop()
+
+	GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease
+	Renew(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *Lease
+	Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error
+}
 
 // Client is a simple DHCP relay client
 type Client struct {
+	background.Process
 	conn  Connection
 	store *LeaseStore
 
 	timeout time.Duration
 	retry   time.Duration
 
-	relay net.IP
-
-	ctx    context.Context
-	cancel context.CancelFunc
+	resolver IPResolver
 
 	remote net.IP
-	mode   ConnectionType
+	local  net.IP
+	relay  net.IP
 
-	Done chan bool
+	mode ConnectionType
+
+	logger logger.Logger
 }
 
 var (
@@ -56,135 +65,91 @@ var (
 )
 
 // NewClient initialize a new client
-func NewClient(local net.IP, remote net.IP, relay net.IP, connType ConnectionType, timeout time.Duration, retry time.Duration) *Client {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType ConnectionType, timeout time.Duration, retry time.Duration, logger logger.Logger) DHCPClient {
+	//ctx, cancel := context.WithCancel(context.Background())
+
+	if connResolver == nil {
+		connResolver = &DefaultConnectioneResolver{}
+	}
 
 	client := Client{
-		store:   NewStore(60 * time.Second),
-		timeout: timeout,
-		retry:   retry,
-		ctx:     ctx,
-		cancel:  cancel,
-
-		Done: make(chan bool),
+		store:    NewStore(60*time.Second, logger),
+		timeout:  timeout,
+		retry:    retry,
+		logger:   logger,
+		resolver: resolver,
 	}
 
-	if remote == nil {
-		gateway, src, err := client.getDefaultGateway()
+	client.Init("DHCP client", func(ctx context.Context) error {
+		remote, err := resolver.GetServerIP()
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
-		if gateway == nil {
-			log.Fatal("Can't detect gatway ip")
+		client.remote = remote
+
+		local, err := resolver.GetLocalIP(remote)
+		if err != nil {
+			return err
 		}
 
-		if local == nil {
-			local = src
+		client.local = local
+
+		relay, err := resolver.GetRelayIP(ctx)
+		if err != nil {
+			return err
 		}
 
-		remote = gateway
-	} else {
-		remote = remote.To4()
-	}
+		client.relay = relay
 
-	if local == nil {
-		ip, err := client.getLocalIP(remote)
-		if err == nil {
-			local = ip
+		if connType == AutoDetect {
+			connType = client.getAutoConnectionType(remote)
 		}
-	} else {
-		local = local.To4()
-	}
 
-	if connType == AutoDetect {
-		connType = client.getAutoConnectionType(remote)
-	}
+		logger.Infof("DHCP server: %v", client.remote)
 
-	log.Infof("DHCP server: %v", remote)
-	client.remote = remote
+		client.mode = connType
+		client.conn = connResolver.GetConnection(local, remote, connType, logger)
 
-	if relay != nil {
-		log.Infof("Relay agent IP: %v", relay)
-		client.relay = relay.To4()
-	} else {
-		client.relay = local
-	}
+		if client.conn == nil {
+			logger.Fatalf("unknown connection type: %v", connType)
+		} else {
+			logger.Infof("Use %v connection", connType)
+		}
 
-	client.mode = connType
+		return nil
 
-	switch connType {
-	case UDP:
-		client.conn = NewUDPConn(&net.UDPAddr{
-			IP:   local,
-			Port: 67,
-		}, &net.UDPAddr{
-			IP:   remote,
-			Port: 67,
-		})
-	case Dual:
-		client.conn = NewDualConn(&net.UDPAddr{
-			IP:   local,
-			Port: 67,
-		}, &net.UDPAddr{
-			IP:   remote,
-			Port: 67,
-		}, true)
-	case Fritzbox:
-		client.conn = NewDualConn(&net.UDPAddr{
-			IP:   local,
-			Port: 67,
-		}, &net.UDPAddr{
-			IP:   remote,
-			Port: 67,
-		}, false)
-	case Broken:
-		client.conn = NewRawConn(&net.UDPAddr{
-			IP:   local,
-			Port: 68,
-		}, &net.UDPAddr{
-			IP:   remote,
-			Port: 67,
-		})
-	case Packet:
-		client.conn = NewRawConn(&net.UDPAddr{
-			IP:   local,
-			Port: 67,
-		}, &net.UDPAddr{
-			IP:   remote,
-			Port: 67,
-		})
-	default:
-		log.Fatalf("Unknown connection type: %v", connType)
-	}
-
-	log.Infof("Use %v connection", connType)
+	}, func(ctx context.Context) error {
+		return client.conn.Close()
+	}, logger)
 
 	return &client
 }
 
-// Start the client (response listener)
-func (c *Client) Start() {
-	go func() {
-		c.store.Run(c.ctx)
+func (c *Client) Start() chan bool {
+	return c.Run(func(ctx context.Context) bool {
+		c.store.Run(ctx)
 
 		for {
-			c3, c2 := c.conn.Receive()
+			c3, c2 := c.conn.Receive(ctx)
 			select {
 			case err := <-c2:
-				log.Error(err)
-			case <-c.ctx.Done():
-				log.Info("DHCP client stopped")
-				close(c.Done)
-				return
+				c.logger.Errorf("Receive error: %v", err)
+			case <-ctx.Done():
+				return false
 			case dhcp := <-c3:
 				if dhcp != nil {
+					//err := ioutil.WriteFile("./dhcp/testdata/tmp/"+dhcp.GetMsgType().String()+".json", dhcp.ToJSON(), 644)
+					//if err != nil {
+					//		c.logger.Error(err)
+					//	}
+
 					go func() {
 						lease, ok := c.store.Get(dhcp.Xid)
 						if ok {
-							logDebugf(dhcp.Xid, "Got DHCP %s", dhcp.GetMsgType())
+							msgType := dhcp.GetMsgType()
+							c.logger.Debugf("Got DHCP %s (%v)", msgType, lease.Xid)
 							if lease.CheckResponseType(dhcp) {
-								msgType := dhcp.GetMsgType()
 								if msgType == layers.DHCPMsgTypeNak {
 									msg := dhcp.GetOption(layers.DHCPOptMessage)
 									if msg != nil {
@@ -194,46 +159,26 @@ func (c *Client) Start() {
 									}
 								}
 
-								logDebugf(lease.Xid, "Change status %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
+								c.logger.Debugf("Change status %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), lease.Xid)
 								lease.DHCP4 = dhcp
 								lease.Touch()
-								lease.Done <- true
+								//lease.Done <- true
+								close(lease.Done)
+								c.logger.Debugf("Lease done %v", lease.Xid)
 							} else {
-								logErrorf(dhcp.Xid, "Unexpected response %s -> %s", lease.GetMsgType(), dhcp.GetMsgType())
+								c.logger.Errorf("Unexpected response %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), dhcp.Xid)
 							}
 
 						} else {
-							logErrorf(dhcp.Xid, "Unknown DHCP response")
+							c.logger.Errorf("Unexpected DHCP response (%v)", dhcp.Xid)
 						}
 					}()
 				} else {
-					log.Error("empty packet")
+					c.logger.Error("Got empty packet")
 				}
 			}
 		}
-	}()
-}
-
-// Stop the client
-func (c *Client) Stop() error {
-	c.cancel()
-	<-c.Done
-	return c.conn.Close()
-}
-
-// GetDHCPServerIP returns the current server IP
-func (c *Client) GetDHCPServerIP() net.IP {
-	return c.remote.To16()
-}
-
-// GetDHCPRelayIP returns the current relay IP
-func (c *Client) GetDHCPRelayIP() net.IP {
-	return c.relay.To16()
-}
-
-// GetDHCPRelayMode returns the current connection mode
-func (c *Client) GetDHCPRelayMode() ConnectionType {
-	return c.mode
+	})
 }
 
 // GetLease requests a new lease with given hostname and mac address
@@ -242,7 +187,7 @@ func (c *Client) GetDHCPRelayMode() ConnectionType {
 // @param mac Mac address
 // @param ip IP address
 func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease {
-	chan1 := make(chan *Lease)
+	chan1 := make(chan *Lease, 1)
 
 	if chaddr == nil {
 		chaddr = c.getHardwareAddr(hostname)
@@ -253,17 +198,29 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 		var lease2 *Lease
 
 		for {
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.discover(ctx2, c.conn, hostname, chaddr, nil)
-			lease = c.wait(ctx2, ch, cancel)
+			timeout, cancel := context.WithTimeout(ctx, c.timeout)
+			defer cancel()
+
+			xid := GenerateXID()
+
+			ch := c.discover(timeout, xid, c.conn, hostname, chaddr, nil)
+			lease = c.wait(timeout, ch)
 
 			if lease != nil {
-				logDebugf(lease.Xid, "DHCP discover finished (%v)", lease.YourClientIP)
+				c.logger.Debugf("DHCP discover finished (%v)", lease.YourClientIP)
+				c.store.Remove(lease.Xid)
 				break
 			} else {
-				log.Infof("Timeout, wait %v", c.retry)
+				c.logger.Infof("Timeout, wait %v (%v)", c.retry, xid)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					l, ok := c.store.Get(xid)
+					if ok && l.GetMsgType() == layers.DHCPMsgTypeOffer {
+						c.store.Remove(l.Xid)
+						lease = l
+						break
+					} else {
+						c.logger.Info("Retry...")
+					}
 				} else {
 					break
 				}
@@ -276,22 +233,37 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 		}
 
 		for {
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ctx2, ch, cancel)
+			timeout, cancel := context.WithTimeout(ctx, c.timeout)
+			defer cancel()
+
+			ch := c.request(timeout, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(timeout, ch)
 
 			if lease2 != nil {
-				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
+				c.logger.Debugf("DHCP request finished (%v/%v - %v)", lease2.GetMsgType(), lease2.YourClientIP, lease2.Xid)
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				logInfof(lease.Xid, "Timeout, wait %v", c.retry)
+				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					l, ok := c.store.Get(lease.Xid)
+					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
+						c.store.Remove(l.Xid)
+						lease2 = l
+						break
+					} else {
+						c.logger.Info("Retry...")
+					}
 				} else {
 					break
 				}
 			}
+		}
+
+		if lease2 != nil {
+			c.logger.Debugf("Got lease: %v (%v / %v)", lease2.YourClientIP, lease2.GetMsgType(), lease2.Xid)
+		} else {
+			c.logger.Errorf("Get lease failed: %v", ctx.Err())
 		}
 
 		chan1 <- lease2
@@ -306,7 +278,7 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 // @param mac Mac address
 // @param ip IP address
 func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *Lease {
-	chan1 := make(chan *Lease)
+	chan1 := make(chan *Lease, 1)
 
 	if chaddr == nil {
 		chaddr = c.getHardwareAddr(hostname)
@@ -319,24 +291,38 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 			xid := GenerateXID()
 
 			lease := NewLease(layers.DHCPMsgTypeDiscover, xid, chaddr, nil)
-			lease.RelayAgentIP = c.relay
+			relayIP, err := c.resolver.GetRelayIP(ctx)
+			if err != nil {
+				c.logger.Errorf("%v (%v)", err, xid)
+			}
+
+			lease.RelayAgentIP = relayIP
 			lease.YourClientIP = ip
 			if hostname != "" {
 				lease.SetHostname(hostname)
 			}
 
-			ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-			ch := c.request(ctx2, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
-			lease2 = c.wait(ctx2, ch, cancel)
+			timeout, cancel := context.WithTimeout(ctx, c.timeout)
+			defer cancel()
+
+			ch := c.request(ctx, layers.DHCPMsgTypeRequest, lease, c.conn, nil)
+			lease2 = c.wait(timeout, ch)
 
 			if lease2 != nil {
-				logDebugf(lease2.Xid, "DHCP request finished (%v)", lease2.YourClientIP)
+				c.logger.Debugf("DHCP request (renew) finished (%v - %v)", lease2.YourClientIP, lease2.Xid)
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				log.Infof("Timeout, wait %v", c.retry)
+				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
-					log.Info("Retry...")
+					l, ok := c.store.Get(lease.Xid)
+					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
+						c.store.Remove(l.Xid)
+						lease2 = l
+						break
+					} else {
+						c.logger.Info("Retry...")
+					}
 				} else {
 					break
 				}
@@ -355,7 +341,7 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 // @param mac Mac address
 // @param ip IP address
 func (c *Client) Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
-	chan1 := make(chan error)
+	chan1 := make(chan error, 1)
 
 	if chaddr == nil {
 		chaddr = c.getHardwareAddr(hostname)
@@ -366,19 +352,24 @@ func (c *Client) Release(ctx context.Context, hostname string, chaddr net.Hardwa
 		xid := GenerateXID()
 
 		request := NewPackage(layers.DHCPMsgTypeRelease, xid, chaddr, nil)
-		request.RelayAgentIP = c.relay
+		relayIP, err := c.resolver.GetRelayIP(ctx)
+		if err != nil {
+			c.logger.Error("%v (%v)", err, xid)
+		}
+
+		request.RelayAgentIP = relayIP
 		request.ClientIP = ip
 
-		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeRelease.String()))
+		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(layers.DHCPMsgTypeRelease.String()), xid)
 
-		c1, c2 := c.conn.Send(request)
+		c1, c2 := c.conn.Send(ctx, request)
 		select {
 		case err := <-c2:
 			chan1 <- err
 		case <-c1:
 			chan1 <- nil
 		case <-ctx.Done():
-			chan1 <- nil
+			chan1 <- fmt.Errorf("Release error: %v", ctx.Err())
 		}
 
 	}()
@@ -386,21 +377,24 @@ func (c *Client) Release(ctx context.Context, hostname string, chaddr net.Hardwa
 	return chan1
 }
 
-func (c *Client) discover(ctx context.Context, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
+func (c *Client) discover(ctx context.Context, xid uint32, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
 	chan1 := make(chan *Lease)
 
 	go func() {
 
-		xid := GenerateXID()
-
 		dhcp := NewLease(layers.DHCPMsgTypeDiscover, xid, chaddr, options)
 		dhcp.SetHostname(hostname)
-		dhcp.RelayAgentIP = c.relay
+		relayIP, err := c.resolver.GetRelayIP(ctx)
+		if err != nil {
+			c.logger.Errorf("Get relay id: %v", err)
+		}
 
-		logDebugf(xid, "Send DHCP %s", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()))
+		dhcp.RelayAgentIP = relayIP
+
+		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()), xid)
 
 		c.store.Set(dhcp)
-		c1, c2 := conn.Send(dhcp.DHCP4)
+		c1, c2 := conn.Send(ctx, dhcp.DHCP4)
 		select {
 		case err := <-c2:
 			c.store.Remove(dhcp.Xid)
@@ -422,57 +416,35 @@ func (c *Client) discover(ctx context.Context, conn Connection, hostname string,
 }
 
 func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease *Lease, conn Connection, options layers.DHCPOptions) chan *Lease {
-	chan1 := make(chan *Lease)
+	rc := make(chan *Lease, 1)
 
 	go func() {
 
 		request := lease.GetRequest(msgType, options)
 
-		logDebugf(request.Xid, "Send DHCP %s", strings.ToUpper(msgType.String()))
+		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(msgType.String()), request.Xid)
 		lease.SetMsgType(layers.DHCPMsgTypeRequest)
 
-		c.store.Set(lease)
-		c1, c2 := conn.Send(request)
+		c.store.Set(request)
+		c1, c2 := conn.Send(ctx, request.DHCP4)
 		select {
 		case err := <-c2:
-			chan1 <- NewLeaseError(err)
+			rc <- NewLeaseError(err)
 		case <-c1:
 			select {
-			case <-lease.Done:
-				chan1 <- lease
+			case <-request.Done:
+				rc <- request
 			case <-ctx.Done():
-				chan1 <- nil
+				rc <- nil
 			}
 		case <-ctx.Done():
-			chan1 <- nil
+			rc <- nil
 		}
 
 	}()
 
-	return chan1
+	return rc
 
-}
-
-func (c *Client) getLocalIP(remote net.IP) (net.IP, error) {
-	r, err := routing.New()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, _, src, err := r.Route(remote)
-
-	return src, err
-}
-
-func (c *Client) getDefaultGateway() (net.IP, net.IP, error) {
-	r, err := routing.New()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, gateway, src, err := r.Route(net.IP{1, 1, 1, 1})
-
-	return gateway, src, err
 }
 
 func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
@@ -512,9 +484,7 @@ func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
 		byte(0xff & (h >> 40))}
 }
 
-func (c *Client) wait(ctx context.Context, ch chan *Lease, cancel context.CancelFunc) *Lease {
-	defer cancel()
-
+func (c *Client) wait(ctx context.Context, ch chan *Lease) *Lease {
 	select {
 	case lease := <-ch:
 		return lease
@@ -529,46 +499,13 @@ func (c *Client) sleep(ctx context.Context, timeout time.Duration) bool {
 
 	c.conn.Block(ctx)
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
-	case <-time.After(timeout):
+	case <-timer.C:
 		return true
 	case <-ctx.Done():
 		return false
 	}
-}
-
-func logDebug(xid uint32, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
-	}).Debug(args...)
-}
-
-func logDebugf(xid uint32, format string, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
-	}).Debugf(format, args...)
-}
-
-func logInfo(xid uint32, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
-	}).Info(args...)
-}
-
-func logInfof(xid uint32, format string, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
-	}).Infof(format, args...)
-}
-
-func logError(xid uint32, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%v", xid),
-	}).Error(args...)
-}
-
-func logErrorf(xid uint32, format string, args ...interface{}) {
-	log.WithFields(log.Fields{
-		"xid": fmt.Sprintf("%x", xid),
-	}).Errorf(format, args...)
 }

@@ -1,0 +1,13 @@
+FROM alpine
+
+RUN apk add dhcp
+
+ENV CFG_FILE=/etc/dhcp/dhcpd.conf
+ENV NAMESERVERS=
+ENV ROUTER=
+ENV DOMAIN=
+
+RUN touch /var/lib/dhcp/dhcpd.leases
+COPY entrypoint.sh /entrypoint.sh
+
+ENTRYPOINT [ "/entrypoint.sh" ]    

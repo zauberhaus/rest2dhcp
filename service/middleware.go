@@ -12,7 +12,7 @@ import (
 )
 
 // ContentMiddleware returns a gorilla mux middleware to check the Accept HTTP header and set a context value
-func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
+func (s *RestServer) ContentMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/doc") {
 			next.ServeHTTP(w, r)
@@ -40,7 +40,7 @@ func (s *Server) ContentMiddleware(next http.Handler) http.Handler {
 }
 
 // PrometheusMiddleware returns a gorilla mux middleware to measure the execution time as prometheus metrics
-func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
+func (s *RestServer) PrometheusMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := mux.CurrentRoute(r)
 		timer := prometheus.NewTimer(httpDuration.WithLabelValues(route.GetName()))
@@ -51,6 +51,6 @@ func (s *Server) PrometheusMiddleware(next http.Handler) http.Handler {
 }
 
 // CounterMiddleware returns a gorilla mux middleware to count requests as prometheus metrics
-func (s *Server) CounterMiddleware(next http.Handler) http.Handler {
+func (s *RestServer) CounterMiddleware(next http.Handler) http.Handler {
 	return promhttp.InstrumentHandlerCounter(httpCounter, next)
 }

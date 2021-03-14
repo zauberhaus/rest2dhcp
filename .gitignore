@@ -21,3 +21,6 @@ example/example
 # vendor/
 service/doc.go
 doc/swagger.yaml
+cpu.pprof
+cpu.profile
+mem.pprof

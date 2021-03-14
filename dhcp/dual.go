@@ -18,11 +18,12 @@ package dhcp
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/zauberhaus/rest2dhcp/logger"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -31,7 +32,7 @@ import (
 // DualConn is a udp listener on a local port and a packet connection to use free src port for outgoing messages
 type DualConn struct {
 	out net.PacketConn
-	in  *net.UDPConn
+	in  UDPPacketConn
 
 	local  *net.UDPAddr
 	remote *net.UDPAddr
@@ -41,24 +42,34 @@ type DualConn struct {
 
 	fixPort bool
 	cnt     int
+
+	logger logger.Logger
 }
 
 // NewDualConn initializes a new connection
-func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connection {
+func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool, out net.PacketConn, in UDPPacketConn, logger logger.Logger) Connection {
 
-	out, err := net.ListenPacket("ip4:udp", local.IP.String())
-	if err != nil {
-		log.Fatal(err)
+	if out == nil {
+		c, err := net.ListenPacket("ip4:udp", local.IP.String())
+		if err != nil {
+			logger.Fatal(err)
+		} else {
+			out = c
+		}
 	}
 
-	log.Printf("Listen packet %s", out.LocalAddr().String())
+	logger.Infof("Listen packet %s", out.LocalAddr().String())
 
-	in, err := net.ListenUDP("udp4", local)
-	if err != nil {
-		log.Fatal(err)
+	if in == nil {
+		c, err := net.ListenUDP("udp4", local)
+		if err != nil {
+			logger.Fatal(err)
+		} else {
+			in = c
+		}
 	}
 
-	log.Printf("Listen upd4 %s", local.String())
+	logger.Infof("Listen upd4 %s", local.String())
 
 	return &DualConn{
 		out:     out,
@@ -67,22 +78,27 @@ func NewDualConn(local *net.UDPAddr, remote *net.UDPAddr, fixPort bool) Connecti
 		remote:  remote,
 		fixPort: fixPort,
 		cnt:     0,
+		logger:  logger,
 	}
 }
 
 // Close the connection
 func (c *DualConn) Close() error {
-	log.Printf("Close packet listener %s", c.out.LocalAddr().String())
+	c.logger.Infof("Close packet listener %s", c.out.LocalAddr().String())
 	err1 := c.in.Close()
-	log.Printf("Close udp4 listener %s", c.local.String())
-	err2 := c.out.Close()
 
-	if err1 == nil {
+	if err1 != nil {
 		return err1
 	}
 
-	return err2
+	c.logger.Infof("Close udp4 listener %s", c.local.String())
+	err2 := c.out.Close()
 
+	if err2 != nil {
+		return err2
+	}
+
+	return nil
 }
 
 // Local returns the local udp address
@@ -96,9 +112,21 @@ func (c *DualConn) Remote() *net.UDPAddr {
 }
 
 // Send a DHCP data packet
-func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
-	chan1 := make(chan int)
-	chan2 := make(chan error)
+func (c *DualConn) Send(ctx context.Context, dhcp *DHCP4) (chan int, chan error) {
+	chan1 := make(chan int, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Send Error: %v", ctx.Err())
+			c.out.SetWriteDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 
@@ -109,13 +137,16 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 		}
 
 		udp := &layers.UDP{
-			SrcPort: c.getPort(),
+			SrcPort: c.GetPort(),
 			DstPort: layers.UDPPort(67),
 		}
 
-		logDebugf(dhcp.Xid, "Use port: %v", uint16(udp.SrcPort))
+		c.logger.Debugf("Use port: %v", uint16(udp.SrcPort))
 
-		udp.SetNetworkLayerForChecksum(ip)
+		if err := udp.SetNetworkLayerForChecksum(ip); err != nil {
+			chan2 <- err
+			return
+		}
 
 		buf := gopacket.NewSerializeBuffer()
 		opts := gopacket.SerializeOptions{
@@ -131,11 +162,15 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 		c.outmux.Lock()
 		defer c.outmux.Unlock()
 
-		if err := c.out.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			log.Fatal(err)
+		if err := c.out.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			chan2 <- err
+			return
 		}
 
 		i, err := c.out.WriteTo(buf.Bytes(), &net.IPAddr{IP: c.remote.IP})
+
+		close(done)
+
 		if err != nil {
 			chan2 <- err
 		} else {
@@ -147,24 +182,48 @@ func (c *DualConn) Send(dhcp *DHCP4) (chan int, chan error) {
 }
 
 // Receive a DHCP data packet
-func (c *DualConn) Receive() (chan *DHCP4, chan error) {
-	chan1 := make(chan *DHCP4)
-	chan2 := make(chan error)
+func (c *DualConn) Receive(ctx context.Context) (chan *DHCP4, chan error) {
+	chan1 := make(chan *DHCP4, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Receive Error: %v", ctx.Err())
+			c.in.SetReadDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 		c.inmux.Lock()
 		defer c.inmux.Unlock()
 
+		if err := c.in.SetReadDeadline(time.Now().Add(24 * time.Hour)); err != nil {
+			chan2 <- err
+			return
+		}
+
 		buffer := make([]byte, 2048)
 		n, _, err := c.in.ReadFromUDP(buffer)
+		close(done)
 
 		if err != nil {
 			chan2 <- err
 			return
 		}
 
+		if n == 2048 {
+			chan2 <- fmt.Errorf("DHCP package too big")
+			return
+		}
+
 		var dhcp2 layers.DHCPv4
-		err = dhcp2.DecodeFromBytes(buffer[:n], nil)
+		err = dhcp2.DecodeFromBytes(buffer[:n], gopacket.NilDecodeFeedback)
+
 		if err != nil {
 			chan2 <- err
 			return
@@ -177,16 +236,13 @@ func (c *DualConn) Receive() (chan *DHCP4, chan error) {
 	return chan1, chan2
 }
 
-func (c *DualConn) getPort() layers.UDPPort {
+func (c *DualConn) GetPort() layers.UDPPort {
 	if c.fixPort {
 		return 68
 	}
 
 	if c.cnt < 1 || c.cnt > 60000 {
 		c.cnt = 1
-		//port := 1
-		//now := time.Now()
-		//c.cnt = port + now.Second()*100 + now.Nanosecond()/10000000
 	} else {
 		c.cnt++
 	}
@@ -197,9 +253,9 @@ func (c *DualConn) getPort() layers.UDPPort {
 // Block outgoing traffic until context is finished
 func (c *DualConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
+	c.outmux.Lock()
 
 	go func() {
-		c.outmux.Lock()
 		defer c.outmux.Unlock()
 		<-ctx.Done()
 		close(rc)

@@ -64,7 +64,7 @@ func NewQuery(request *http.Request) (*Query, error) {
 		if err == nil {
 			query.Mac = client.MAC(tmp)
 		} else {
-			return nil, fmt.Errorf("Invalid MAC format")
+			return nil, err
 		}
 	}
 
@@ -83,19 +83,38 @@ func NewQuery(request *http.Request) (*Query, error) {
 
 // ServerConfig describes the server configuration
 type ServerConfig struct {
-	Local       net.IP              `yaml:"local,omitempty" json:"local,omitempty" xml:"local,omitempty"`
-	Remote      net.IP              `yaml:"remote,omitempty" json:"remote,omitempty" xml:"remote,omitempty"`
-	Relay       net.IP              `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`
-	Mode        dhcp.ConnectionType `yaml:"mode,omitempty" json:"mode,omitempty" xml:"mode,omitempty"`
-	Listen      string              `yaml:"listen,omitempty" json:"listen,omitempty" xml:"listen,omitempty"`
-	Timeout     time.Duration       `yaml:"timeout,omitempty" json:"timeout,omitempty" xml:"timeout,omitempty"`
-	DHCPTimeout time.Duration       `yaml:"dhcpTimeout,omitempty" json:"dhcpTimeout,omitempty" xml:"dhcpTimeout,omitempty"`
-	Retry       time.Duration       `yaml:"retry,omitempty" json:"retry,omitempty" xml:"retry,omitempty"`
-	Verbose     bool                `yaml:"verbose,omitempty" json:"verbose,omitempty" xml:"verbose,omitempty"`
-	Quiet       bool                `yaml:"quiet,omitempty" json:"quiet,omitempty" xml:"quiet,omitempty"`
+	Local       net.IP                  `yaml:"local,omitempty" json:"local,omitempty" xml:"local,omitempty"`
+	Remote      net.IP                  `yaml:"remote,omitempty" json:"remote,omitempty" xml:"remote,omitempty"`
+	DHCPServer  string                  `yaml:"dhcpserver,omitempty" json:"dhcpserver,omitempty" xml:"dhcpserver,omitempty"`
+	Relay       net.IP                  `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`
+	Mode        dhcp.ConnectionType     `yaml:"mode,omitempty" json:"mode,omitempty" xml:"mode,omitempty"`
+	Listen      string                  `yaml:"listen,omitempty" json:"listen,omitempty" xml:"listen,omitempty"`
+	Timeout     time.Duration           `yaml:"timeout,omitempty" json:"timeout,omitempty" xml:"timeout,omitempty"`
+	DHCPTimeout time.Duration           `yaml:"dhcpTimeout,omitempty" json:"dhcpTimeout,omitempty" xml:"dhcpTimeout,omitempty"`
+	Retry       time.Duration           `yaml:"retry,omitempty" json:"retry,omitempty" xml:"retry,omitempty"`
+	Verbose     bool                    `yaml:"verbose,omitempty" json:"verbose,omitempty" xml:"verbose,omitempty"`
+	AccessLog   bool                    `yaml:"accesslog,omitempty" json:"accesslog,omitempty" xml:"accesslog,omitempty"`
+	Quiet       bool                    `yaml:"quiet,omitempty" json:"quiet,omitempty" xml:"quiet,omitempty"`
+	KubeConfig  *dhcp.KubeServiceConfig `yaml:"kubeconfig,omitempty" json:"kubeconfig,omitempty" xml:"kubeconfig,omitempty"`
 }
 
 func (c *ServerConfig) String() string {
 	data, _ := yaml.Marshal(c)
 	return string(data)
+}
+
+// NewLease initializes a new lease object from a DHCP package
+func NewLease(hostname string, l dhcp.Lease) *client.Lease {
+
+	return &client.Lease{
+		Hostname: hostname,
+		Mac:      client.MAC(l.ClientHWAddr),
+		IP:       l.YourClientIP,
+		Mask:     l.GetSubnetMask(),
+		DNS:      l.GetDNS(),
+		Router:   l.GetRouter(),
+		Renew:    l.GetRenewalTime(),
+		Rebind:   l.GetRebindTime(),
+		Expire:   l.GetExpireTime(),
+	}
 }

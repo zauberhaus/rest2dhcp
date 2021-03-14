@@ -22,17 +22,15 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/google/gopacket/layers"
+	"github.com/zauberhaus/rest2dhcp/logger"
 )
 
 //LeaseStoreItem describes a lease store item
 type LeaseStoreItem struct {
-	lease   *Lease
-	expire  time.Time
-	renewal time.Time
-	status  layers.DHCPMsgType
+	Lease  *Lease
+	Expire time.Time
+	Status layers.DHCPMsgType
 }
 
 // LeaseStore is thread-safe store for temporary DHCP lease packets with a TTL
@@ -41,13 +39,15 @@ type LeaseStore struct {
 	mutex  sync.RWMutex
 	ttl    time.Duration
 	checks time.Duration
+	logger logger.Logger
 }
 
 // NewStore creates a new lease store
-func NewStore(ttl time.Duration) *LeaseStore {
+func NewStore(ttl time.Duration, logger logger.Logger) *LeaseStore {
 	return &LeaseStore{
 		store:  make(map[uint32]*LeaseStoreItem),
 		ttl:    ttl,
+		logger: logger,
 		checks: time.Duration(ttl / 2),
 	}
 }
@@ -58,17 +58,17 @@ func (l *LeaseStore) Set(lease *Lease) error {
 	defer l.mutex.Unlock()
 
 	if lease != nil {
+
 		l.store[lease.Xid] = &LeaseStoreItem{
-			lease:   lease,
-			expire:  time.Now().Add(l.ttl),
-			status:  lease.GetMsgType(),
-			renewal: lease.GetRenewalTime(),
+			Lease:  lease,
+			Expire: time.Now().Add(l.ttl),
+			Status: lease.GetMsgType(),
 		}
+		return nil
 	} else {
 		return fmt.Errorf("Try to store empty lease")
 	}
 
-	return nil
 }
 
 // Get a value from the store
@@ -78,7 +78,20 @@ func (l *LeaseStore) Get(xid uint32) (*Lease, bool) {
 
 	val, ok := l.store[xid]
 	if ok && val != nil {
-		return val.lease, ok
+		return val.Lease, ok
+	}
+
+	return nil, ok
+}
+
+// GetItem returns an item from the store
+func (l *LeaseStore) GetItem(xid uint32) (*LeaseStoreItem, bool) {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+
+	val, ok := l.store[xid]
+	if ok && val != nil {
+		return val, ok
 	}
 
 	return nil, ok
@@ -115,8 +128,26 @@ func (l *LeaseStore) Touch(xid uint32) bool {
 
 	v, ok := l.store[xid]
 	if ok {
-		v.expire = time.Now().Add(l.ttl)
+		v.Expire = time.Now().Add(l.ttl)
 		return true
+	}
+
+	return false
+
+}
+
+// Touch extends the expire time of an entry
+func (l *LeaseStore) HasStatus(xid uint32, status layers.DHCPMsgType) bool {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+
+	v, ok := l.store[xid]
+	if ok {
+		if v.Lease.GetMsgType() == status {
+			return true
+		}
+
+		return false
 	}
 
 	return false
@@ -132,7 +163,7 @@ func (l *LeaseStore) outdated() []uint32 {
 	now := time.Now()
 
 	for k, v := range l.store {
-		if v.expire.Before(now) {
+		if v.Expire.Before(now) {
 			outdated = append(outdated, k)
 		}
 	}
@@ -146,29 +177,41 @@ func (l *LeaseStore) Clean() {
 
 	if len(outdated) > 0 {
 
-		log.Printf("%v/%v outdated store items", len(outdated), len(l.store))
+		l.logger.Debugf("%v/%v outdated store items", len(outdated), len(l.store))
 
 		l.mutex.Lock()
 		defer l.mutex.Unlock()
 
 		for _, key := range outdated {
-			l.store[key].lease.Done <- true
-			delete(l.store, key)
+			e, ok := l.store[key]
+			if ok {
+				if e.Lease != nil {
+					e.Lease.Done <- true
+				}
+
+				delete(l.store, key)
+			}
 		}
 	}
 }
 
 // Run the process to clean the store periodically
 func (l *LeaseStore) Run(ctx context.Context) {
+	l.logger.Debugf("Start LeaseStore clean up process (%v)", l.checks)
+
 	go func() {
-		log.Printf("Start LeaseStore clean up process (%v)", l.checks)
+		timer := time.NewTimer(l.checks)
+		defer timer.Stop()
+
 		for {
 			select {
-			case <-time.After(l.checks):
+			case <-timer.C:
 				l.Clean()
+				timer.Reset(l.checks)
 			case <-ctx.Done():
 				break
 			}
 		}
 	}()
+
 }

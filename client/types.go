@@ -76,21 +76,6 @@ func (l *Lease) String() string {
 	return string(data)
 }
 
-// NewLease initializes a new lease object from a DHCP package
-func NewLease(hostname string, d dhcp.DHCP4) *Lease {
-	return &Lease{
-		Hostname: hostname,
-		Mac:      MAC(d.ClientHWAddr),
-		IP:       d.YourClientIP,
-		Mask:     d.GetSubnetMask(),
-		DNS:      d.GetDNS(),
-		Router:   d.GetRouter(),
-		Renew:    d.GetRenewalTime(),
-		Rebind:   d.GetRebindTime(),
-		Expire:   d.GetExpireTime(),
-	}
-}
-
 // Error implementation with status code
 type Error struct {
 	msg  string

@@ -29,8 +29,8 @@ import (
 // Connection is an interface for a DHCP connection
 type Connection interface {
 	Close() error
-	Send(dhcp *DHCP4) (chan int, chan error)
-	Receive() (chan *DHCP4, chan error)
+	Send(ctx context.Context, dhcp *DHCP4) (chan int, chan error)
+	Receive(ctx context.Context) (chan *DHCP4, chan error)
 	Local() *net.UDPAddr
 	Remote() *net.UDPAddr
 
@@ -113,17 +113,28 @@ func (c *ConnectionType) UnmarshalXML(d *xml.Decoder, start xml.StartElement) er
 	return c.Parse(txt)
 }
 
-// MarshalYAML custom marshal for YAMLv3
-func (c *ConnectionType) MarshalYAML() (interface{}, error) {
+func (c ConnectionType) MarshalYAML() (interface{}, error) {
 	return c.String(), nil
 }
 
 // MarshalJSON custom marshal for JSON
-func (c *ConnectionType) MarshalJSON() ([]byte, error) {
+func (c ConnectionType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.String())
 }
 
 // MarshalXML custom marshal for XML
-func (c *ConnectionType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+func (c ConnectionType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(c.String(), start)
+}
+
+// KubeServiceConfig is the optional configuration to read the relay ip
+type KubeServiceConfig struct {
+	Config    string `yaml:"config,omitempty" json:"config,omitempty" xml:"config,omitempty"`
+	Namespace string `yaml:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
+	Service   string `yaml:"service,omitempty" json:"service,omitempty" xml:"service,omitempty"`
+}
+
+func (c *KubeServiceConfig) String() string {
+	data, _ := yaml.Marshal(c)
+	return string(data)
 }

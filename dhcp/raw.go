@@ -22,10 +22,9 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/zauberhaus/rest2dhcp/logger"
 )
 
 // RawConn is a packet connection between local and remote
@@ -37,28 +36,35 @@ type RawConn struct {
 
 	inmux  sync.Mutex
 	outmux sync.Mutex
+
+	logger logger.Logger
 }
 
 // NewRawConn initializes a new connection
-func NewRawConn(local *net.UDPAddr, remote *net.UDPAddr) Connection {
+func NewRawConn(local *net.UDPAddr, remote *net.UDPAddr, conn net.PacketConn, logger logger.Logger) Connection {
 
-	out, err := net.ListenPacket("ip4:udp", local.IP.String())
-	if err != nil {
-		log.Fatal(err)
+	if conn == nil {
+		c, err := net.ListenPacket("ip4:udp", local.IP.String())
+		if err != nil {
+			logger.Fatal(err)
+		} else {
+			conn = c
+		}
 	}
 
-	log.Printf("Listen packet %s", out.LocalAddr().String())
+	logger.Infof("Listen packet %s", conn.LocalAddr().String())
 
 	return &RawConn{
-		conn:   out,
+		conn:   conn,
 		local:  local,
 		remote: remote,
+		logger: logger,
 	}
 }
 
 // Close the connection
 func (c *RawConn) Close() error {
-	log.Printf("Close listener %s", c.conn.LocalAddr().String())
+	c.logger.Infof("Close listener %s", c.conn.LocalAddr().String())
 	return c.conn.Close()
 }
 
@@ -73,9 +79,21 @@ func (c *RawConn) Remote() *net.UDPAddr {
 }
 
 // Send a DHCP data packet
-func (c *RawConn) Send(dhcp *DHCP4) (chan int, chan error) {
-	chan1 := make(chan int)
-	chan2 := make(chan error)
+func (c *RawConn) Send(ctx context.Context, dhcp *DHCP4) (chan int, chan error) {
+	chan1 := make(chan int, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Send Error: %v", ctx.Err())
+			c.conn.SetWriteDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 
@@ -99,21 +117,21 @@ func (c *RawConn) Send(dhcp *DHCP4) (chan int, chan error) {
 		}
 
 		if err := gopacket.SerializeLayers(buf, opts, udp, dhcp); err != nil {
-			log.Fatal(err)
+			chan2 <- err
+			return
 		}
 
 		c.outmux.Lock()
 		defer c.outmux.Unlock()
 
-		if err := c.conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			log.Fatal(err)
+		if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			chan2 <- err
+			return
 		}
 
 		i, err := c.conn.WriteTo(buf.Bytes(), &net.IPAddr{IP: c.remote.IP})
 
-		if err := c.conn.SetDeadline(time.Now().Add(24 * time.Hour)); err != nil {
-			log.Fatal(err)
-		}
+		close(done)
 
 		if err != nil {
 			chan2 <- err
@@ -127,13 +145,30 @@ func (c *RawConn) Send(dhcp *DHCP4) (chan int, chan error) {
 }
 
 // Receive a DHCP data packet
-func (c *RawConn) Receive() (chan *DHCP4, chan error) {
-	chan1 := make(chan *DHCP4)
-	chan2 := make(chan error)
+func (c *RawConn) Receive(ctx context.Context) (chan *DHCP4, chan error) {
+	chan1 := make(chan *DHCP4, 1)
+	chan2 := make(chan error, 1)
+	done := make(chan bool)
+
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			c.logger.Debugf("Receive Error: %v", ctx.Err())
+			c.conn.SetReadDeadline(time.Now())
+			chan2 <- ctx.Err()
+		}
+	}()
 
 	go func() {
 		c.inmux.Lock()
 		defer c.inmux.Unlock()
+
+		if err := c.conn.SetReadDeadline(time.Now().Add(24 * time.Hour)); err != nil {
+			chan2 <- err
+			return
+		}
 
 		var (
 			udp  layers.UDP
@@ -148,7 +183,7 @@ func (c *RawConn) Receive() (chan *DHCP4, chan error) {
 				return
 			}
 
-			err = udp.DecodeFromBytes(buffer[:n], nil)
+			err = udp.DecodeFromBytes(buffer[:n], gopacket.NilDecodeFeedback)
 			if err != nil {
 				chan2 <- err
 				return
@@ -159,7 +194,11 @@ func (c *RawConn) Receive() (chan *DHCP4, chan error) {
 			}
 		}
 
-		err := dhcp.DecodeFromBytes(udp.Payload, nil)
+		close(done)
+
+		//ioutil.WriteFile("./testdata/payload.dat", udp.Payload, 0644)
+
+		err := dhcp.DecodeFromBytes(udp.Payload, gopacket.NilDecodeFeedback)
 		if err != nil {
 			chan2 <- err
 			return
@@ -172,32 +211,12 @@ func (c *RawConn) Receive() (chan *DHCP4, chan error) {
 	return chan1, chan2
 }
 
-func (c *RawConn) serialize(dhcp *layers.DHCPv4) []byte {
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-		FixLengths:       true,
-	}
-
-	err := dhcp.SerializeTo(buf, opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	l := len(buf.Bytes())
-	if l <= 300 {
-		buf.AppendBytes(301 - l)
-	}
-
-	return buf.Bytes()
-}
-
 // Block outgoing traffic until context is finished
 func (c *RawConn) Block(ctx context.Context) chan bool {
 	rc := make(chan bool)
+	c.outmux.Lock()
 
 	go func() {
-		c.outmux.Lock()
 		defer c.outmux.Unlock()
 		<-ctx.Done()
 		close(rc)

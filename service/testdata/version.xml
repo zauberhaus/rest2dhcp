@@ -1,0 +1,9 @@
+<Version>
+  <buildDate>now</buildDate>
+  <compiler>gc</compiler>
+  <gitCommit>123456</gitCommit>
+  <gitTreeState>dirty</gitTreeState>
+  <gitVersion>0001</gitVersion>
+  <goVersion>go1.16</goVersion>
+  <platform>linux/amd64</platform>
+</Version>

@@ -34,16 +34,18 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 
 	"github.com/google/gopacket/layers"
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"github.com/zauberhaus/rest2dhcp/kubernetes"
+	"github.com/zauberhaus/rest2dhcp/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -79,53 +81,136 @@ var (
 	Version *client.Version
 )
 
-// Server provides the REST service
-type Server struct {
+// RestServer provides the REST service
+type RestServer struct {
 	http.Server
-	client *dhcp.Client
-	Done   chan bool
-	Info   *client.Version
-	Config *ServerConfig
+	client   dhcp.DHCPClient
+	done     chan bool
+	info     *client.Version
+	config   *ServerConfig
+	hostname string
+	port     string
+	logger   logger.Logger
 }
 
 // NewServer creates a new Server object
-func NewServer(config *ServerConfig, version *client.Version) *Server {
+func NewServer(l logger.Logger) background.Server {
+	return &RestServer{
+		logger: l,
+		done:   make(chan bool),
+	}
+}
 
-	if config.Verbose {
-		log.SetLevel(log.DebugLevel)
-	} else if config.Quiet {
-		log.SetLevel(log.WarnLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
+func (s *RestServer) Init(ctx context.Context, args ...interface{}) {
+	var config *ServerConfig
+	var version *client.Version
+	var c dhcp.DHCPClient
+
+	if len(args) > 0 {
+		tmp, ok := args[0].(*ServerConfig)
+		if ok {
+			config = tmp
+		}
 	}
 
-	server := Server{}
-	server.Config = config
-	server.Addr = config.Listen
-	server.Done = make(chan bool)
+	if len(args) > 1 {
+		tmp, ok := args[1].(*client.Version)
+		if ok {
+			version = tmp
+		}
+	}
 
-	server.client = dhcp.NewClient(config.Local, config.Remote, config.Relay, config.Mode, config.DHCPTimeout, config.Retry)
+	if len(args) > 2 {
+		tmp, ok := args[2].(dhcp.DHCPClient)
+		if ok {
+			c = tmp
+		}
+	}
 
+	s.init(ctx, config, version, c)
+}
+
+// NewServer creates a new Server object
+func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *client.Version, client dhcp.DHCPClient) {
+
+	if config.Verbose {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		s.logger.Debug("Enable debug log level")
+	} else if config.Quiet {
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		s.logger.Errorf("Error get hostname: %v", err)
+	}
+
+	h, p, err := net.SplitHostPort(config.Listen)
+	if err != nil {
+		s.logger.Errorf("Error get parse listen: %v", err)
+	}
+
+	if h == "localhost" {
+		hostname = h
+	}
+
+	s.hostname = hostname
+	s.port = p
+	s.config = config
+	s.Addr = config.Listen
+
+	var resolver dhcp.IPResolver = nil
+
+	if config.KubeConfig != nil && len(config.KubeConfig.Service) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		client := kubernetes.NewKubeClient(config.KubeConfig.Config, s.logger)
+		resolver = dhcp.NewKubernetesExternalIPResolver(config.Local, config.Remote, config.KubeConfig, client, s.logger)
+		extIP, err := resolver.GetRelayIP(ctx)
+		if err == nil {
+			config.Relay = extIP
+		} else {
+			s.logger.Error("Get relay ip: %v", err)
+			if config.Relay != nil {
+				resolver = dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, s.logger)
+			} else {
+				resolver = nil
+			}
+		}
+	} else {
+		resolver = dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
+	}
+
+	if client == nil {
+		client = dhcp.NewClient(resolver, nil, config.Mode, config.DHCPTimeout, config.Retry, s.logger)
+	}
+
+	s.client = client
 	router := mux.NewRouter().StrictSlash(true)
-	router.Use(server.ContentMiddleware)
-	router.Use(server.CounterMiddleware)
-	router.Use(server.PrometheusMiddleware)
+	router.Use(s.PrometheusMiddleware)
+	router.Use(s.CounterMiddleware)
 
-	server.Handler = handlers.CombinedLoggingHandler(os.Stderr, router)
+	if !config.Quiet {
+		router.Use(logger.NewLogMiddleware(s.hostname, s.logger))
+	}
+
+	router.Use(s.ContentMiddleware)
+
+	s.Handler = router
 
 	if version != nil {
-		version.DHCPServer = server.client.GetDHCPServerIP()
-		version.RelayIP = server.client.GetDHCPRelayIP()
-		version.Mode = server.client.GetDHCPRelayMode()
-		server.Info = version
+		s.info = version
 
 		if version.GitVersion == "" {
 			version.GitVersion = "dev"
 			version.GitTreeState = "dirty"
 		}
 
-		log.Printf("Version:\n\n%v\n", server.Info)
-		log.Debugf("Config:\n\n%v\n", server.Config)
+		s.logger.Infof("Start server\n\n%v\n", s.info)
+		s.logger.Debugf("Config:\n\n%v\n", s.config)
 	}
 
 	// Manipulate modtime of swagger file to invalidate cache
@@ -136,48 +221,64 @@ func NewServer(config *ServerConfig, version *client.Version) *Server {
 		if err == nil {
 			old := string(data)
 			new := strings.Replace(old, "version: \"1.0.0\"", "version: \""+version.GitVersion+"\"", 1)
-			if old != new {
-				file.size = int64(len(new))
-				file.compressed = encode([]byte(new))
+			new2 := strings.Replace(new, "host: \"localhost:8080\"", "host: \""+s.hostname+":"+s.port+"\"", 1)
+			if old != new2 {
+				file.size = int64(len(new2))
+				file.compressed = encode([]byte(new2))
 			}
 		}
 	}
 
-	server.setup(router)
+	s.setup(router)
+}
 
-	return &server
+func (s *RestServer) Hostname() string {
+	return s.hostname
+}
+
+func (s *RestServer) Port() string {
+	return s.port
 }
 
 // Start starts the server
 // * @param ctx - context for a graceful shutdown
-func (s *Server) Start(ctx context.Context) {
+func (s *RestServer) Start(ctx context.Context) chan bool {
+	rc := make(chan bool, 1)
+
 	go func() {
-		s.client.Start()
+		<-s.client.Start()
 
 		go func() {
 			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("listen: %s\n", err)
+				s.logger.Fatalf("Error listen: %s\n", err)
 			}
 		}()
 
-		log.Print("Server Started")
+		s.logger.Info("Server listen on ", s.Addr)
+		close(rc)
 		<-ctx.Done()
 		s.client.Stop()
 
-		ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := s.Shutdown(ctx2); err != nil {
-			log.Infof("Server Shutdown Failed:%+v", err)
+			s.logger.Infof("Server Shutdown Failed:%+v", err)
 		}
 
-		log.Print("Server stopped")
+		s.logger.Info("Server stopped")
 
-		close(s.Done)
+		close(s.done)
 	}()
+
+	return rc
 }
 
-func (s *Server) setup(router *mux.Router) {
+func (s *RestServer) Done() chan bool {
+	return s.done
+}
+
+func (s *RestServer) setup(router *mux.Router) {
 	router.
 		Name("version").
 		Methods("GET").
@@ -234,13 +335,13 @@ func (s *Server) setup(router *mux.Router) {
 
 }
 
-func (s *Server) version(w http.ResponseWriter, r *http.Request) {
+func (s *RestServer) version(w http.ResponseWriter, r *http.Request) {
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 
-	s.write(w, s.Info, contentType)
+	s.write(w, s.info, contentType)
 }
 
-func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
+func (s *RestServer) lease(w http.ResponseWriter, r *http.Request) {
 
 	query, err := NewQuery(r)
 	if err != nil {
@@ -248,7 +349,7 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
 	defer cancel()
 
 	lease := <-s.client.GetLease(ctx, query.Hostname, net.HardwareAddr(query.Mac))
@@ -259,24 +360,31 @@ func (s *Server) lease(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !lease.Ok() {
+		if lease.DHCP4 != nil {
+			if lease.GetMsgType() == layers.DHCPMsgTypeNak {
+				http.Error(w, lease.Error().Error(), http.StatusNotAcceptable)
+				return
+			}
+		}
+
 		http.Error(w, lease.Error().Error(), http.StatusBadRequest)
 		return
 	}
 
-	result := client.NewLease(query.Hostname, *lease.DHCP4)
+	result := NewLease(query.Hostname, *lease)
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 
 	s.write(w, result, contentType)
 }
 
-func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
+func (s *RestServer) renew(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
 	defer cancel()
 
 	lease := <-s.client.Renew(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
@@ -287,40 +395,42 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !lease.Ok() {
-		if lease.GetMsgType() == layers.DHCPMsgTypeNak {
-			http.Error(w, lease.Error().Error(), http.StatusNotAcceptable)
-			return
+		if lease.DHCP4 != nil {
+			if lease.GetMsgType() == layers.DHCPMsgTypeNak {
+				http.Error(w, lease.Error().Error(), http.StatusNotAcceptable)
+				return
+			}
 		}
 
 		http.Error(w, lease.Error().Error(), http.StatusBadRequest)
 		return
 	}
 
-	result := client.NewLease(query.Hostname, *lease.DHCP4)
+	result := NewLease(query.Hostname, *lease)
 	contentType := client.ContentType(r.Context().Value(Content).(string))
 	s.write(w, result, contentType)
 }
 
-func (s *Server) release(w http.ResponseWriter, r *http.Request) {
+func (s *RestServer) release(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.Config.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
 	defer cancel()
 
-	lease := <-s.client.Release(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
-
-	if lease != nil {
-		httpError(w, http.StatusRequestTimeout)
+	err = <-s.client.Release(ctx, query.Hostname, net.HardwareAddr(query.Mac), query.IP)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
 		return
 	}
 
 	w.Write([]byte("Ok.\n"))
 }
 
-func (s *Server) write(w http.ResponseWriter, value interface{}, t client.ContentType) error {
+func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.ContentType) error {
 
 	switch t {
 	case client.JSON:

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if ! which esc1 > /dev/null ; then 
+if ! which esc > /dev/null ; then 
   P=`pwd`
   cd ..
   go get github.com/mjibson/esc

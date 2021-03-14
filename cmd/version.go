@@ -19,15 +19,14 @@ package cmd
 import (
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/spf13/cobra"
+	"github.com/zauberhaus/rest2dhcp/logger"
 	"github.com/zauberhaus/rest2dhcp/service"
 	"gopkg.in/yaml.v3"
 )
 
 // addVersionCmd creates and adds the version command to Root
-func addVersionCmd(root *cobra.Command) {
+func addVersionCmd(root *cobra.Command, logger logger.Logger) {
 	var versionCmd = &cobra.Command{
 		Use:   "version",
 		Short: "Show the version info",
@@ -35,7 +34,7 @@ func addVersionCmd(root *cobra.Command) {
 
 			data, err := yaml.Marshal(service.Version)
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatal(err)
 			}
 
 			fmt.Fprintln(cmd.OutOrStderr(), string(data))
