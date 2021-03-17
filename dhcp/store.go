@@ -72,16 +72,20 @@ func (l *LeaseStore) Set(lease *Lease) error {
 }
 
 // Get a value from the store
-func (l *LeaseStore) Get(xid uint32) (*Lease, bool) {
+func (l *LeaseStore) Get(xid uint32) (*Lease, bool, context.CancelFunc) {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 
 	val, ok := l.store[xid]
 	if ok && val != nil {
-		return val.Lease, ok
+		val.Lease.Lock()
+
+		return val.Lease, ok, func() {
+			val.Lease.Unlock()
+		}
 	}
 
-	return nil, ok
+	return nil, ok, func() {}
 }
 
 // GetItem returns an item from the store

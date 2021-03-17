@@ -139,13 +139,10 @@ func (c *Client) Start() chan bool {
 				return false
 			case dhcp := <-c3:
 				if dhcp != nil {
-					//err := ioutil.WriteFile("./dhcp/testdata/tmp/"+dhcp.GetMsgType().String()+".json", dhcp.ToJSON(), 644)
-					//if err != nil {
-					//		c.logger.Error(err)
-					//	}
-
 					go func() {
-						lease, ok := c.store.Get(dhcp.Xid)
+						lease, ok, cancel := c.store.Get(dhcp.Xid)
+						defer cancel()
+
 						if ok {
 							msgType := dhcp.GetMsgType()
 							c.logger.Debugf("Got DHCP %s (%v)", msgType, lease.Xid)
@@ -162,7 +159,6 @@ func (c *Client) Start() chan bool {
 								c.logger.Debugf("Change status %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), lease.Xid)
 								lease.DHCP4 = dhcp
 								lease.Touch()
-								//lease.Done <- true
 								close(lease.Done)
 								c.logger.Debugf("Lease done %v", lease.Xid)
 							} else {
@@ -213,7 +209,9 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 			} else {
 				c.logger.Infof("Timeout, wait %v (%v)", c.retry, xid)
 				if c.sleep(ctx, c.retry) {
-					l, ok := c.store.Get(xid)
+					l, ok, cancel := c.store.Get(xid)
+					defer cancel()
+
 					if ok && l.GetMsgType() == layers.DHCPMsgTypeOffer {
 						c.store.Remove(l.Xid)
 						lease = l
@@ -246,7 +244,9 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 			} else {
 				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
-					l, ok := c.store.Get(lease.Xid)
+					l, ok, cancel := c.store.Get(lease.Xid)
+					defer cancel()
+
 					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
 						c.store.Remove(l.Xid)
 						lease2 = l
@@ -315,7 +315,9 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 			} else {
 				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
-					l, ok := c.store.Get(lease.Xid)
+					l, ok, cancel := c.store.Get(lease.Xid)
+					defer cancel()
+
 					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
 						c.store.Remove(l.Xid)
 						lease2 = l

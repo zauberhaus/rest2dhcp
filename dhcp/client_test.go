@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -88,7 +89,7 @@ func TestGetLease(t *testing.T) {
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
 
-	count := 0
+	count := int32(0)
 
 	conn.EXPECT().Block(gomock.Any()).AnyTimes()
 
@@ -116,7 +117,7 @@ func TestGetLease(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Offer.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				} else if d.GetMsgType() == layers.DHCPMsgTypeRequest {
@@ -124,12 +125,12 @@ func TestGetLease(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Ack.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				}
 
-				count++
+				atomic.AddInt32(&count, 1)
 			}()
 
 			return chan3, chan4
@@ -143,12 +144,15 @@ func TestGetLease(t *testing.T) {
 
 	<-client.Start()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	lease := <-client.GetLease(ctx, "hostname", net.HardwareAddr{0, 1, 2, 3, 4, 5})
 
-	assert.NotNil(t, lease)
+	if !assert.NotNil(t, lease) {
+		t.Fatal()
+	}
+
 	assert.Equal(t, net.IP{192, 168, 1, 46}, lease.YourClientIP.To4())
 	assert.Equal(t, layers.DHCPMsgTypeAck, lease.GetMsgType())
 
@@ -189,7 +193,7 @@ func TestGetLeaseSlow(t *testing.T) {
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
 
-	count := 0
+	count := int32(0)
 
 	conn.EXPECT().Block(gomock.Any()).AnyTimes()
 
@@ -217,7 +221,7 @@ func TestGetLeaseSlow(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Offer.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				} else if d.GetMsgType() == layers.DHCPMsgTypeRequest {
@@ -225,12 +229,12 @@ func TestGetLeaseSlow(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Ack.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				}
 
-				count++
+				atomic.AddInt32(&count, 1)
 			}()
 
 			return chan3, chan4
@@ -285,7 +289,7 @@ func TestGetLeaseVerySlow(t *testing.T) {
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
 
-	count := 0
+	count := int32(0)
 
 	conn.EXPECT().Block(gomock.Any()).AnyTimes()
 
@@ -306,9 +310,9 @@ func TestGetLeaseVerySlow(t *testing.T) {
 			}()
 
 			go func() {
-				count++
+				val := atomic.AddInt32(&count, 1)
 
-				if count&1 == 1 {
+				if val&1 == 1 {
 					return
 				} else {
 					time.Sleep(10 * time.Millisecond)
@@ -319,7 +323,7 @@ func TestGetLeaseVerySlow(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Offer.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				} else if d.GetMsgType() == layers.DHCPMsgTypeRequest {
@@ -327,7 +331,7 @@ func TestGetLeaseVerySlow(t *testing.T) {
 					data, err := ioutil.ReadFile("./testdata/Ack.json")
 					assert.NoError(t, err)
 					json.Unmarshal(data, &packet)
-					packet.DHCPv4.Xid = d.Xid
+					packet.Xid = d.Xid
 					logger.Testf("receive %v", packet.GetMsgType())
 					chan1 <- &packet
 				}
@@ -409,7 +413,7 @@ func TestRenew(t *testing.T) {
 				assert.NoError(t, err)
 				err = json.Unmarshal(data, &packet)
 				assert.NoError(t, err)
-				packet.DHCPv4.Xid = d.Xid
+				packet.Xid = d.Xid
 				logger.Testf("receive %v instead of ACK", packet.GetMsgType())
 				chan1 <- &packet
 
@@ -434,7 +438,7 @@ func TestRenew(t *testing.T) {
 				assert.NoError(t, err)
 				err = json.Unmarshal(data, &packet)
 				assert.NoError(t, err)
-				packet.DHCPv4.Xid = d.Xid
+				packet.Xid = d.Xid
 				logger.Testf("receive %v instead of ACK", packet.GetMsgType())
 				chan1 <- &packet
 
