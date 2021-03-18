@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -132,10 +131,7 @@ func (k *KubeClientImpl) GetConfig(ctx context.Context, namespace string, name s
 
 func (k *KubeClientImpl) Patch(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error) {
 
-	data, err := json.Marshal(patch.set)
-	if err != nil {
-		return nil, err
-	}
+	data := []byte(patch.String())
 
 	result, err := k.clientset.CoreV1().Services(namespace).Patch(ctx, name, types.JSONPatchType, data, metav1.PatchOptions{})
 	if err == nil {
