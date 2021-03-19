@@ -1,0 +1,103 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+on:
+  push:    
+    tags:
+    - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: [1.16.x]
+        platform: [ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Install Go
+      if: success()
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Run tests 
+      run: |
+        go get github.com/mjibson/esc
+        go generate ./service/server.go
+        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background
+        go test -v -covermode=count -coverprofile=coverage.out 
+    - name: Install gcov2lcov
+      shell: bash
+      run: |
+        curl -sLf https://github.com/jandelgado/gcov2lcov/releases/download/v1.0.4/gcov2lcov-linux-amd64.tar.gz | tar zxf - --strip 1
+        chmod +x gcov2lcov-linux-amd64
+      working-directory: /tmp
+    - name: Convert coverage.out to coverage.lcov
+      run: |
+        /tmp/gcov2lcov-linux-amd64 -infile coverage.out -outfile coverage.lcov
+    - name: Coveralls
+      uses: coverallsapp/github-action@v1.1.2
+      with:
+          github-token: ${{ secrets.github_token }}
+          path-to-lcov: coverage.lcov
+
+  build:
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Prepare 
+      if: success()
+      id: prepare
+      run: |
+        VERSION=$(cat version.txt)
+        echo ::set-output name=version::${GITHUB_REF#refs/*/}
+        # echo ::set-output name=version::${VERSION}
+        echo ::set-output name=docker_platforms::linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+        echo ::set-output name=docker_image::docker.io/${{ secrets.DOCKER_USERNAME }}/rest2dhcp
+        echo ::set-output name=hash::${GITHUB_SHA}
+        echo ::set-output name=pre-release::false
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+      with:
+        platforms: all      
+      
+    - name: Set up Docker Buildx      
+      uses: docker/setup-buildx-action@v1.1.1
+          
+    - name: Log into registry
+      if: success()
+      run: echo ${{ secrets.DOCKER_TOKEN }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+    - name: Run Buildx
+      if: success() && !contains(steps.prepare.outputs.version, 'master')
+      run: |
+        VERSION=$(echo "${{ steps.prepare.outputs.version }}" | sed -e 's/^v//')
+        #V=$(echo "${{ steps.prepare.outputs.version }}" | sed -e 's/-.*$//')
+        docker buildx build \
+          --output type=image,name=${{ steps.prepare.outputs.docker_image }},push=true \
+          --platform ${{ steps.prepare.outputs.docker_platforms }} \
+          --tag "${{ steps.prepare.outputs.docker_image }}:$$VERSION" \
+          --tag "${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.hash }}" \
+          --tag "${{ steps.prepare.outputs.docker_image }}:latest" \
+          --build-arg TAG="$V" \
+          --file Dockerfile .
+
+    - name: Create Release
+      if: success() && !contains(steps.prepare.outputs.version, 'master')
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.prepare.outputs.version }}
+        release_name: Release ${{ steps.prepare.outputs.version }}
+        draft: false
+        prerelease: ${{ steps.prepare.outputs.prerelease }}
