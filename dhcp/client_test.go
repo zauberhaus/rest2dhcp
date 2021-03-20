@@ -50,13 +50,6 @@ func TestStartStop(t *testing.T) {
 		chan1 := make(chan *dhcp.DHCP4)
 		chan2 := make(chan error)
 
-		go func() {
-			select {
-			case <-ctx.Done():
-				close(chan1)
-			}
-		}()
-
 		return chan1, chan2
 	})
 

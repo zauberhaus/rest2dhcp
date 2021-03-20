@@ -70,6 +70,7 @@ func TestBackgroundProcessFinishAndStop(t *testing.T) {
 
 func TestBackgroundProcessCancel(t *testing.T) {
 	val := 0
+	started := make(chan bool)
 
 	logger := mock.NewTestLogger()
 	defer logger.Assert(t, 0, 0, 0, 5, 2, 0)
@@ -78,6 +79,7 @@ func TestBackgroundProcessCancel(t *testing.T) {
 	process.Init(t.Name(), nil, nil, logger)
 
 	p := func(ctx context.Context) bool {
+		close(started)
 		return exec(ctx, 75*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
@@ -88,10 +90,10 @@ func TestBackgroundProcessCancel(t *testing.T) {
 		}, &val)
 	}
 
-	c := process.Run(p)
-	<-c
+	process.Run(p)
+	<-started
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(220 * time.Millisecond)
 
 	process.Stop()
 
