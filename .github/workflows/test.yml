@@ -1,0 +1,49 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Dev
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: [1.16.x]
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Install Go
+      if: success()
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Run tests 
+      run: |
+        go get github.com/mjibson/esc
+        go generate ./service/server.go
+        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background
+        go test -v -covermode=count -coverprofile=coverage.out 
+    - name: Install gcov2lcov
+      shell: bash
+      run: |
+        curl -sLf https://github.com/jandelgado/gcov2lcov/releases/download/v1.0.4/gcov2lcov-linux-amd64.tar.gz | tar zxf - --strip 1
+        chmod +x gcov2lcov-linux-amd64
+      working-directory: /tmp
+    - name: Convert coverage.out to coverage.lcov
+      run: |
+        /tmp/gcov2lcov-linux-amd64 -infile coverage.out -outfile coverage.lcov
+    - name: Coveralls
+      uses: coverallsapp/github-action@v1.1.2
+      with:
+          github-token: ${{ secrets.github_token }}
+          path-to-lcov: coverage.lcov
+
