@@ -42,11 +42,11 @@ jobs:
     - name: Convert coverage.out to coverage.lcov
       if: success() && matrix.platform == 'ubuntu-latest'
       run: |
-        /tmp/gcov2lcov-linux-amd64 -infile coverage.out -outfile coverage.lcov
+        /tmp/gcov2lcov-linux-amd64 -infile coverage.out -outfile /tmp/coverage.lcov
     - name: Coveralls
       if: success() && matrix.platform == 'ubuntu-latest'
       uses: coverallsapp/github-action@v1.1.2
       with:
           github-token: ${{ secrets.github_token }}
-          path-to-lcov: coverage.lcov
+          path-to-lcov: /tmp/coverage.lcov
 
