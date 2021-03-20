@@ -3,6 +3,7 @@ package dhcp_test
 import (
 	"context"
 	"net"
+	"runtime"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -58,7 +59,11 @@ func TestLocalIPResolver_GetLocalIP(t *testing.T) {
 			if tt.want != nil {
 				assert.Equal(t, tt.want, got)
 			} else {
-				assert.NotEqual(t, tt.local, got)
+				if runtime.GOOS == "linux" {
+					assert.NotEqual(t, tt.local, got)
+				} else {
+					assert.Equal(t, tt.local, got)
+				}
 				assert.NotEqual(t, tt.remote, got)
 				assert.NotEqual(t, tt.relay, got)
 			}
@@ -99,6 +104,11 @@ func TestLocalIPResolver_GetServerIP(t *testing.T) {
 			if tt.remote != nil {
 				assert.Equal(t, tt.remote, got)
 			} else {
+				if runtime.GOOS == "linux" {
+					assert.NotEqual(t, tt.remote, got)
+				} else {
+					assert.Error(t, err)
+				}
 				assert.NotEqual(t, tt.local, got)
 				assert.NotEqual(t, tt.relay, got)
 			}

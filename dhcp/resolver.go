@@ -38,17 +38,25 @@ func (l *LocalIPResolver) GetLocalIP(remote net.IP) (net.IP, error) {
 		l.logger.Fatal(err)
 	}
 
-	_, gateway, src, err := r.Route(remote)
+	if r != nil {
+		_, gateway, src, err := r.Route(remote)
 
-	if err == nil {
-		l.local = src
+		if err == nil {
+			l.local = src
 
-		if l.remote == nil {
-			l.remote = gateway
+			if l.remote == nil {
+				l.remote = gateway
+			}
+		}
+
+		return src, err
+	} else {
+		if l.local != nil {
+			return l.local, nil
+		} else {
+			return nil, fmt.Errorf("No local server ip")
 		}
 	}
-
-	return src, err
 }
 
 func (l *LocalIPResolver) GetServerIP() (net.IP, error) {
@@ -61,15 +69,19 @@ func (l *LocalIPResolver) GetServerIP() (net.IP, error) {
 		l.logger.Fatal(err)
 	}
 
-	_, gateway, src, err := r.Route(net.IP{1, 1, 1, 1})
+	if r != nil {
+		_, gateway, src, err := r.Route(net.IP{1, 1, 1, 1})
 
-	if l.local == nil {
-		l.local = src
+		if l.local == nil {
+			l.local = src
+		}
+
+		l.remote = gateway
+
+		return gateway, err
+	} else {
+		return nil, fmt.Errorf("No DHCP server ip")
 	}
-
-	l.remote = gateway
-
-	return gateway, err
 }
 
 type StaticIPResolver struct {
