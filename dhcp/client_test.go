@@ -444,7 +444,7 @@ func TestRenew(t *testing.T) {
 		return chan1, chan2
 	}).AnyTimes()
 
-	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 200*time.Millisecond, 200*time.Millisecond, logger)
+	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 500*time.Millisecond, 1*time.Second, logger)
 
 	<-client.Start()
 
