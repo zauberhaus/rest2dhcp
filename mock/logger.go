@@ -3,6 +3,7 @@ package mock
 import (
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"github.com/golang/mock/gomock"
 	"github.com/rs/zerolog"
@@ -13,14 +14,14 @@ import (
 type Testlogger struct {
 	log logger.Logger
 
-	ErrorCount   int
-	FatalCount   int
-	InfoCount    int
-	DebugCount   int
-	TraceCount   int
-	WarnCount    int
-	TestCount    int
-	RequestCount int
+	ErrorCount   int64
+	FatalCount   int64
+	InfoCount    int64
+	DebugCount   int64
+	TraceCount   int64
+	WarnCount    int64
+	TestCount    int64
+	RequestCount int64
 }
 
 func NewTestLogger() *Testlogger {
@@ -28,7 +29,7 @@ func NewTestLogger() *Testlogger {
 	return &Testlogger{log: log}
 }
 
-func (l *Testlogger) Assert(t gomock.TestReporter, val ...int) {
+func (l *Testlogger) Assert(t gomock.TestReporter, val ...int64) {
 	if len(val) > 0 && val[0] >= 0 {
 		assert.Equal(t, val[0], l.FatalCount, "Fatal count")
 	}
@@ -63,47 +64,47 @@ func (l *Testlogger) Assert(t gomock.TestReporter, val ...int) {
 }
 
 func (l *Testlogger) Fatal(args ...interface{}) {
-	l.FatalCount++
+	atomic.AddInt64(&l.FatalCount, 1)
 	l.log.Error(args...)
 }
 
 func (l *Testlogger) Fatalf(format string, args ...interface{}) {
-	l.FatalCount++
+	atomic.AddInt64(&l.FatalCount, 1)
 	l.log.Errorf(format, args...)
 }
 
 func (l *Testlogger) Fatalln(args ...interface{}) {
-	l.FatalCount++
+	atomic.AddInt64(&l.FatalCount, 1)
 	l.log.Error(args...)
 }
 
 func (l *Testlogger) Error(args ...interface{}) {
-	l.ErrorCount++
+	atomic.AddInt64(&l.ErrorCount, 1)
 	l.log.Error(args...)
 }
 
 func (l *Testlogger) Errorf(format string, args ...interface{}) {
-	l.ErrorCount++
+	atomic.AddInt64(&l.ErrorCount, 1)
 	l.log.Errorf(format, args...)
 }
 
 func (l *Testlogger) Errorln(args ...interface{}) {
-	l.ErrorCount++
+	atomic.AddInt64(&l.ErrorCount, 1)
 	l.log.Error(args...)
 }
 
 func (l *Testlogger) Info(args ...interface{}) {
-	l.InfoCount++
+	atomic.AddInt64(&l.InfoCount, 1)
 	l.log.Info(args...)
 }
 
 func (l *Testlogger) Infof(format string, args ...interface{}) {
-	l.InfoCount++
+	atomic.AddInt64(&l.InfoCount, 1)
 	l.log.Infof(format, args...)
 }
 
 func (l *Testlogger) Infoln(args ...interface{}) {
-	l.InfoCount++
+	atomic.AddInt64(&l.InfoCount, 1)
 	l.log.Info(args...)
 }
 
@@ -113,47 +114,47 @@ func (l *Testlogger) Warning(args ...interface{}) {
 }
 
 func (l *Testlogger) Warningf(format string, args ...interface{}) {
-	l.WarnCount++
+	atomic.AddInt64(&l.WarnCount, 1)
 	l.log.Warningf(format, args...)
 }
 
 func (l *Testlogger) Warningln(args ...interface{}) {
-	l.WarnCount++
+	atomic.AddInt64(&l.WarnCount, 1)
 	l.log.Warning(args...)
 }
 
 func (l *Testlogger) Debug(args ...interface{}) {
-	l.DebugCount++
+	atomic.AddInt64(&l.DebugCount, 1)
 	l.log.Debug(args...)
 }
 
 func (l *Testlogger) Debugln(args ...interface{}) {
-	l.DebugCount++
+	atomic.AddInt64(&l.DebugCount, 1)
 	l.log.Debug(args...)
 }
 
 func (l *Testlogger) Debugf(format string, args ...interface{}) {
-	l.DebugCount++
+	atomic.AddInt64(&l.DebugCount, 1)
 	l.log.Debugf(format, args...)
 }
 
 func (l *Testlogger) Trace(args ...interface{}) {
-	l.TraceCount++
+	atomic.AddInt64(&l.TraceCount, 1)
 	l.log.Trace(args...)
 }
 
 func (l *Testlogger) Traceln(args ...interface{}) {
-	l.TraceCount++
+	atomic.AddInt64(&l.TraceCount, 1)
 	l.log.Trace(args...)
 }
 
 func (l *Testlogger) Tracef(format string, args ...interface{}) {
-	l.TraceCount++
+	atomic.AddInt64(&l.TraceCount, 1)
 	l.log.Tracef(format, args...)
 }
 
 func (l *Testlogger) Test(args ...interface{}) {
-	l.TestCount++
+	atomic.AddInt64(&l.TestCount, 1)
 	a := []interface{}{"----- "}
 	a = append(a, args...)
 	a = append(a, " ------")
@@ -162,7 +163,7 @@ func (l *Testlogger) Test(args ...interface{}) {
 }
 
 func (l *Testlogger) Testf(format string, args ...interface{}) {
-	l.TestCount++
+	atomic.AddInt64(&l.TestCount, 1)
 	l.log.Tracef("------ "+format+" ------", args...)
 }
 

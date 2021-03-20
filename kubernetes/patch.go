@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"encoding/json"
 	"strings"
 )
 
@@ -15,6 +16,14 @@ type Patch struct {
 	set         PatchSet
 	annotations bool
 	labels      bool
+}
+
+func NewPatch(set PatchSet, annotations bool, labels bool) *Patch {
+	return &Patch{
+		set:         set,
+		annotations: annotations,
+		labels:      labels,
+	}
 }
 
 // Add a set of patches
@@ -107,4 +116,9 @@ func (p *Patch) getAnnotationPatch(o MetaObject, key string, value string) Patch
 	})
 
 	return payload
+}
+
+func (p *Patch) String() string {
+	data, _ := json.Marshal(p.set)
+	return string(data)
 }

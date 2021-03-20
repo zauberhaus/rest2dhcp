@@ -26,6 +26,8 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -180,7 +182,9 @@ func TestServer_Version(t *testing.T) {
 					t.Fatalf("%v", err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				result := strings.Replace(string(data2), "go1.16", runtime.Version(), 1)
+
+				assert.Equal(t, result, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}

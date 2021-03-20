@@ -54,7 +54,8 @@ func TestStoreSimple(t *testing.T) {
 			t.Fatalf("Not existing lease %v found", 100)
 		}
 
-		l, ok := store.Get(xid1)
+		l, ok, cancel := store.Get(xid1)
+		defer cancel()
 
 		if !ok {
 			t.Fatalf("Lease %v not found", xid1)

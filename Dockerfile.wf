@@ -1,4 +1,4 @@
-FROM golang:1.14-alpine
+FROM golang:1.16-alpine
 
 RUN apk update && apk --no-cache upgrade && apk add --no-cache git
 RUN go get github.com/mjibson/esc
@@ -14,5 +14,5 @@ COPY . $SRC
 RUN cd $SRC && go mod download
 WORKDIR $SRC
 
-CMD cd $SRC && go generate ./... && go test -v ./cmd ./client ./dhcp ./service
+CMD cd $SRC && go generate ./service/server.go && go test -v ./...
 

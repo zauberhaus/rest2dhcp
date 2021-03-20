@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -42,6 +43,8 @@ type Lease struct {
 	Hostname  string
 	Done      chan bool
 	err       error
+
+	mux sync.Mutex
 }
 
 // NewLease creates a lease object
@@ -349,6 +352,14 @@ func (l *Lease) GetRequest(msgType layers.DHCPMsgType, options layers.DHCPOption
 		DHCP4: dhcp,
 		Done:  make(chan bool, 1),
 	}
+}
+
+func (l *Lease) Lock() {
+	l.mux.Lock()
+}
+
+func (l *Lease) Unlock() {
+	l.mux.Unlock()
 }
 
 // GenerateXID generates a random uint32 value

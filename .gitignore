@@ -24,3 +24,6 @@ doc/swagger.yaml
 cpu.pprof
 cpu.profile
 mem.pprof
+.env
+.secrets
+*.old
