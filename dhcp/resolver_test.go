@@ -100,11 +100,12 @@ func TestLocalIPResolver_GetServerIP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, logger)
 			got, err := l.GetServerIP()
-			assert.NoError(t, err)
 			if tt.remote != nil {
+				assert.NoError(t, err)
 				assert.Equal(t, tt.remote, got)
 			} else {
 				if runtime.GOOS == "linux" {
+					assert.NoError(t, err)
 					assert.NotEqual(t, tt.remote, got)
 				} else {
 					assert.Error(t, err)

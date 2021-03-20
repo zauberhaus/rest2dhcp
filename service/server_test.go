@@ -182,7 +182,10 @@ func TestServer_Version(t *testing.T) {
 					t.Fatalf("%v", err)
 				}
 
+				arch := runtime.GOOS + "/" + runtime.GOARCH
+
 				result := strings.Replace(string(data2), "go1.16", runtime.Version(), 1)
+				result = strings.Replace(result, "linux/amd64", arch, 1)
 
 				assert.Equal(t, result, string(body))
 			} else if tt.body != "" {
