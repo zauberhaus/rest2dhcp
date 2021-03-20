@@ -207,7 +207,7 @@ func TestGetLeaseSlow(t *testing.T) {
 			}()
 
 			go func() {
-				time.Sleep(150 * time.Millisecond)
+				time.Sleep(250 * time.Millisecond)
 
 				if d.GetMsgType() == layers.DHCPMsgTypeDiscover {
 					var packet dhcp.DHCP4
