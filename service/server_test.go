@@ -83,7 +83,7 @@ func TestNewServer(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	server.Init(ctx, config, version, dhcp)
-	server.Start(ctx)
+	<-server.Start(ctx)
 
 	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
 		"Accept": "text/dummy",
