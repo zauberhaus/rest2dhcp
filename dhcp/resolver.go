@@ -165,7 +165,7 @@ func (r *KubernetesExternalIPResolver) GetRelayIP(ctx context.Context) (net.IP, 
 		ip := net.ParseIP(ips[0])
 		if ip != nil {
 			if r.last == nil || r.last.To4().String() != lbip.To4().String() {
-				r.logger.Infof("Use external Kubernetes service ip %v (%s/%s", result.ObjectMeta.Namespace, result.ObjectMeta.Name, ip)
+				r.logger.Infof("Use external Kubernetes service ip %v (%s/%s)", ip, result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 				r.last = ip
 			}
 

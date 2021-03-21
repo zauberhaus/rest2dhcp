@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Config
+current-context: ctx
+clusters:
+- cluster:
+    server: dummy
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: user
+  name: ctx

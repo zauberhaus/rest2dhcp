@@ -3,15 +3,13 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/zauberhaus/rest2dhcp/logger"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -20,19 +18,17 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
-const tag = "kube"
-
 type KubeClient interface {
 	GetServicesForLB(ctx context.Context) ([]*v1.Service, error)
 	GetConfig(ctx context.Context, namespace string, name string, config string) (string, error)
 	GetService(ctx context.Context, namespace string, name string) (*v1.Service, error)
-	Patch(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error)
-	Watch(ctx context.Context, resource string, objType runtime.Object) chan [2]metav1.Object
+	PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error)
+	WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc)
 }
 
 type KubeClientImpl struct {
-	clientset *kubernetes.Clientset
-	logger    logger.Logger
+	client kubernetes.Interface
+	logger logger.Logger
 }
 
 type patch struct {
@@ -41,11 +37,13 @@ type patch struct {
 	Value string `json:"value"`
 }
 
+/*
 type patchUint64 struct {
 	Op    string `json:"op"`
 	Path  string `json:"path"`
 	Value uint64 `json:"value"`
 }
+*/
 
 type patchStruct struct {
 	Op    string   `json:"op"`
@@ -53,7 +51,7 @@ type patchStruct struct {
 	Value struct{} `json:"value"`
 }
 
-func NewKubeClient(kubeconfig string, logger logger.Logger) KubeClient {
+func NewKubeClient(kubeconfig string, logger logger.Logger) (KubeClient, error) {
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -61,26 +59,31 @@ func NewKubeClient(kubeconfig string, logger logger.Logger) KubeClient {
 		// use the current context in kubeconfig
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {
-			logger.Errorf("BuildConfigFromFlags: %v", err)
-			return nil
+			return nil, err
 		}
 	}
 
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Errorf("NewForConfig: %v", err)
-		return nil
+		return nil, err
 	}
 
 	return &KubeClientImpl{
-		clientset: clientset,
-		logger:    logger,
-	}
+		client: clientset,
+		logger: logger,
+	}, nil
 }
 
-func (k *KubeClientImpl) getConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error) {
-	m, err := k.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+func NewTestKubeClient(client kubernetes.Interface, logger logger.Logger) (KubeClient, error) {
+	return &KubeClientImpl{
+		client: client,
+		logger: logger,
+	}, nil
+}
+
+func (k *KubeClientImpl) GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error) {
+	m, err := k.client.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +92,7 @@ func (k *KubeClientImpl) getConfigMap(ctx context.Context, namespace string, nam
 }
 
 func (k *KubeClientImpl) GetService(ctx context.Context, namespace string, name string) (*v1.Service, error) {
-	m, err := k.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	m, err := k.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +101,7 @@ func (k *KubeClientImpl) GetService(ctx context.Context, namespace string, name 
 }
 
 func (k *KubeClientImpl) GetServicesForLB(ctx context.Context) ([]*v1.Service, error) {
-	services, err := k.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	services, err := k.client.CoreV1().Services(v1.NamespaceAll).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +118,7 @@ func (k *KubeClientImpl) GetServicesForLB(ctx context.Context) ([]*v1.Service, e
 }
 
 func (k *KubeClientImpl) GetConfig(ctx context.Context, namespace string, name string, config string) (string, error) {
-	cm, err := k.getConfigMap(ctx, namespace, name)
+	cm, err := k.GetConfigMap(ctx, namespace, name)
 	if err != nil {
 		return "", err
 	}
@@ -123,17 +126,17 @@ func (k *KubeClientImpl) GetConfig(ctx context.Context, namespace string, name s
 	cfg, ok := cm.Data[config]
 
 	if !ok {
-		return "", fmt.Errorf("Config entry not found")
+		return "", fmt.Errorf("config entry not found")
 	}
 
 	return cfg, nil
 }
 
-func (k *KubeClientImpl) Patch(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error) {
+func (k *KubeClientImpl) PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error) {
 
 	data := []byte(patch.String())
 
-	result, err := k.clientset.CoreV1().Services(namespace).Patch(ctx, name, types.JSONPatchType, data, metav1.PatchOptions{})
+	result, err := k.client.CoreV1().Services(namespace).Patch(ctx, name, types.JSONPatchType, data, metav1.PatchOptions{})
 	if err == nil {
 		return result, nil
 	}
@@ -141,26 +144,30 @@ func (k *KubeClientImpl) Patch(ctx context.Context, namespace string, name strin
 	return nil, err
 }
 
-func (k *KubeClientImpl) Watch(ctx context.Context, resource string, objType runtime.Object) chan [2]metav1.Object {
+func (k *KubeClientImpl) WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc) {
 	changed := make(chan [2]metav1.Object, 1)
+	stopper := make(chan struct{})
 
-	watchlist := cache.NewListWatchFromClient(k.clientset.CoreV1().RESTClient(), resource, v1.NamespaceAll, fields.Everything())
-	_, controller := cache.NewInformer(
-		watchlist,
-		objType,
-		0*time.Second,
+	cancel := func() {
+		close(stopper)
+	}
+
+	factory := informers.NewSharedInformerFactory(k.client, 0)
+	informer := factory.Core().V1().Services().Informer()
+
+	informer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) {
 				obj, ok := o.(metav1.Object)
 				if ok {
-					k.logger.Infof("Added to "+resource+": %s/%s", obj.GetNamespace(), obj.GetName())
+					k.logger.Infof("Added service: %s/%s", obj.GetNamespace(), obj.GetName())
 					changed <- [2]metav1.Object{nil, obj}
 				}
 			},
 			DeleteFunc: func(o interface{}) {
 				obj, ok := o.(metav1.Object)
 				if ok {
-					k.logger.Infof("Deleted from "+resource+": %s/%s", obj.GetNamespace(), obj.GetName())
+					k.logger.Infof("Deleted service: %s/%s", obj.GetNamespace(), obj.GetName())
 					changed <- [2]metav1.Object{obj, nil}
 				}
 			},
@@ -169,7 +176,7 @@ func (k *KubeClientImpl) Watch(ctx context.Context, resource string, objType run
 				if ok {
 					new, ok := newObj.(metav1.Object)
 					if ok {
-						k.logger.Infof("Changed in "+resource+": %s/%s", old.GetNamespace(), new.GetName())
+						k.logger.Infof("Changed service: %s/%s", old.GetNamespace(), new.GetName())
 						changed <- [2]metav1.Object{old, new}
 					}
 				}
@@ -177,7 +184,7 @@ func (k *KubeClientImpl) Watch(ctx context.Context, resource string, objType run
 		},
 	)
 
-	go controller.Run(ctx.Done())
+	go informer.Run(stopper)
 
-	return changed
+	return changed, cancel
 }

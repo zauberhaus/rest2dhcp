@@ -21,10 +21,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"reflect"
 	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket/layers"
@@ -585,8 +587,10 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
 
+	setDHCPClient(server, dhcpClient)
+
 	ctx, cancel := context.WithCancel(context.Background())
-	server.Init(ctx, config, getVersion(), dhcpClient)
+	server.Init(ctx, config, getVersion())
 	<-server.Start(ctx)
 
 	time.Sleep(100 * time.Microsecond)
@@ -603,5 +607,17 @@ func getVersion() *client.Version {
 		GitVersion:   "nix",
 		GoVersion:    runtime.Version(),
 		Platform:     fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH),
+	}
+}
+
+func setDHCPClient(server background.Server, c dhcp.DHCPClient) {
+	restServer, ok := server.(*service.RestServer)
+	if ok {
+		pointerVal := reflect.ValueOf(restServer)
+		val := reflect.Indirect(pointerVal)
+		member := val.FieldByName("client")
+		ptrToY := unsafe.Pointer(member.UnsafeAddr())
+		realPtrToY := (*dhcp.DHCPClient)(ptrToY)
+		*realPtrToY = c
 	}
 }

@@ -47,6 +47,8 @@ import (
 	"github.com/zauberhaus/rest2dhcp/kubernetes"
 	"github.com/zauberhaus/rest2dhcp/logger"
 	"gopkg.in/yaml.v3"
+
+	kube "k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -91,10 +93,13 @@ type RestServer struct {
 	hostname string
 	port     string
 	logger   logger.Logger
+
+	clientset kube.Interface
 }
 
 // NewServer creates a new Server object
 func NewServer(l logger.Logger) background.Server {
+
 	return &RestServer{
 		logger: l,
 		done:   make(chan bool),
@@ -104,7 +109,6 @@ func NewServer(l logger.Logger) background.Server {
 func (s *RestServer) Init(ctx context.Context, args ...interface{}) {
 	var config *ServerConfig
 	var version *client.Version
-	var c dhcp.DHCPClient
 
 	if len(args) > 0 {
 		tmp, ok := args[0].(*ServerConfig)
@@ -120,18 +124,11 @@ func (s *RestServer) Init(ctx context.Context, args ...interface{}) {
 		}
 	}
 
-	if len(args) > 2 {
-		tmp, ok := args[2].(dhcp.DHCPClient)
-		if ok {
-			c = tmp
-		}
-	}
-
-	s.init(ctx, config, version, c)
+	s.init(ctx, config, version)
 }
 
 // NewServer creates a new Server object
-func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *client.Version, client dhcp.DHCPClient) {
+func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *client.Version) {
 
 	if config.Verbose {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -167,28 +164,32 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		client := kubernetes.NewKubeClient(config.KubeConfig.Config, s.logger)
-		resolver = dhcp.NewKubernetesExternalIPResolver(config.Local, config.Remote, config.KubeConfig, client, s.logger)
-		extIP, err := resolver.GetRelayIP(ctx)
+		client, err := s.getKubeClient(config.KubeConfig.Config, s.logger)
 		if err == nil {
-			config.Relay = extIP
-		} else {
-			s.logger.Error("Get relay ip: %v", err)
-			if config.Relay != nil {
-				resolver = dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, s.logger)
+			resolver = dhcp.NewKubernetesExternalIPResolver(config.Local, config.Remote, config.KubeConfig, client, s.logger)
+			extIP, err := resolver.GetRelayIP(ctx)
+			if err == nil {
+				config.Relay = extIP
 			} else {
-				resolver = nil
+				s.logger.Errorf("Get relay ip: %v", err)
+				if config.Relay != nil {
+					resolver = dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, s.logger)
+				} else {
+					resolver = nil
+				}
 			}
+		} else {
+			s.logger.Errorf("Kubernetes client configuration: %v", err)
+			resolver = dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
 		}
 	} else {
 		resolver = dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
 	}
 
-	if client == nil {
-		client = dhcp.NewClient(resolver, nil, config.Mode, config.DHCPTimeout, config.Retry, s.logger)
+	if s.client == nil {
+		s.client = dhcp.NewClient(resolver, nil, config.Mode, config.DHCPTimeout, config.Retry, s.logger)
 	}
 
-	s.client = client
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(s.PrometheusMiddleware)
 	router.Use(s.CounterMiddleware)
@@ -465,6 +466,14 @@ func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.Co
 	}
 
 	return fmt.Errorf("Unknown content format: %v", t)
+}
+
+func (s *RestServer) getKubeClient(kubeconfig string, logger logger.Logger) (kubernetes.KubeClient, error) {
+	if s.clientset != nil {
+		return kubernetes.NewTestKubeClient(s.clientset, s.logger)
+	} else {
+		return kubernetes.NewKubeClient(kubeconfig, s.logger)
+	}
 }
 
 func httpError(w http.ResponseWriter, code int) {

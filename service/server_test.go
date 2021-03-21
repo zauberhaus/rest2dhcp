@@ -26,11 +26,13 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket/layers"
@@ -42,6 +44,10 @@ import (
 	"github.com/zauberhaus/rest2dhcp/mock"
 	"github.com/zauberhaus/rest2dhcp/service"
 	"gopkg.in/yaml.v3"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kube "k8s.io/client-go/kubernetes"
+	testclient "k8s.io/client-go/kubernetes/fake"
 )
 
 //go:generate mockgen -source ../dhcp/client.go  -package mock -destination ../mock/client.go
@@ -81,8 +87,214 @@ func TestNewServer(t *testing.T) {
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
 
+	setDHCPClient(server, dhcp)
+
 	ctx, cancel := context.WithCancel(context.Background())
-	server.Init(ctx, config, version, dhcp)
+	server.Init(ctx, config, version)
+	<-server.Start(ctx)
+
+	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+		"Accept": "text/dummy",
+	})
+
+	assert.Equal(t, 415, response.StatusCode)
+
+	cancel()
+	<-server.Done()
+}
+
+func TestNewServerWithKubernetes(t *testing.T) {
+	tests := []struct {
+		name   string
+		svc    *v1.Service
+		msgs   []int64
+		config *service.ServerConfig
+	}{
+		{
+			name: "ok",
+			msgs: []int64{0, 0, 0, 4, 1, 0, 0, 1},
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "svc001",
+				},
+				Spec: v1.ServiceSpec{
+					ExternalIPs: []string{
+						"78.78.78.78",
+					},
+				},
+			},
+		},
+		{
+			name: "missing exernal ip",
+			msgs: []int64{0, 1, 0, 3, 1, 0, 0, 1},
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "svc001",
+				},
+				Spec: v1.ServiceSpec{
+					ExternalIPs: []string{},
+				},
+			},
+		},
+		{
+			name: "not existing config file",
+			msgs: []int64{0, 0, 0, 3, 1, 0, 0, 1},
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "svc001",
+				},
+				Spec: v1.ServiceSpec{
+					ExternalIPs: []string{},
+				},
+			},
+			config: &service.ServerConfig{
+				KubeConfig: &dhcp.KubeServiceConfig{
+					Config: "./testdata/dummy.yaml",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			port := getPort()
+
+			config := tt.config
+			if config == nil {
+				config = &service.ServerConfig{
+					Listen: fmt.Sprintf(":%v", port),
+					KubeConfig: &dhcp.KubeServiceConfig{
+						Config:    "./testdata/config.yaml",
+						Namespace: "ns001",
+						Service:   "svc001",
+					},
+				}
+			} else {
+				config.Listen = fmt.Sprintf(":%v", port)
+			}
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			dhcpClient := mock.NewMockDHCPClient(ctrl)
+
+			dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
+				rc := make(chan bool)
+				close(rc)
+				return rc
+			})
+
+			clientset := testclient.NewSimpleClientset()
+
+			ctx := context.Background()
+
+			ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ns001",
+				},
+			}, metav1.CreateOptions{})
+
+			assert.NoError(t, err)
+			assert.NotNil(t, ns)
+
+			svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, tt.svc, metav1.CreateOptions{})
+			assert.NoError(t, err)
+			assert.NotNil(t, svc)
+
+			dhcpClient.EXPECT().Stop()
+
+			version := client.NewVersion("now", "123456", "0001", "dirty")
+
+			logger := mock.NewTestLogger()
+			defer logger.Assert(t, tt.msgs...)
+
+			server := service.NewServer(logger)
+			assert.NotNil(t, server)
+
+			setClientSet(server, clientset)
+			setDHCPClient(server, dhcpClient)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			server.Init(ctx, config, version)
+			<-server.Start(ctx)
+
+			response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+				"Accept": "text/dummy",
+			})
+
+			assert.Equal(t, 415, response.StatusCode)
+
+			cancel()
+			<-server.Done()
+		})
+	}
+}
+
+func TestNewServerWithKubernetesFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	dhcpClient := mock.NewMockDHCPClient(ctrl)
+
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
+		rc := make(chan bool)
+		close(rc)
+		return rc
+	})
+
+	clientset := testclient.NewSimpleClientset()
+
+	ctx := context.Background()
+
+	ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns001",
+		},
+	}, metav1.CreateOptions{})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, ns)
+
+	svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "svc001",
+		},
+		Spec: v1.ServiceSpec{
+			ExternalIPs: []string{
+				//		"78.78.78.78",
+			},
+		},
+	}, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	assert.NotNil(t, svc)
+
+	dhcpClient.EXPECT().Stop()
+
+	port := getPort()
+
+	config := &service.ServerConfig{
+		Listen: fmt.Sprintf(":%v", port),
+		KubeConfig: &dhcp.KubeServiceConfig{
+			Config:    "./testdata/config.yaml",
+			Namespace: "ns001",
+			Service:   "svc001",
+		},
+	}
+
+	version := client.NewVersion("now", "123456", "0001", "dirty")
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 1, 0, 3, 1, 0, 0, 1)
+
+	server := service.NewServer(logger)
+	assert.NotNil(t, server)
+
+	setClientSet(server, clientset)
+	setDHCPClient(server, dhcpClient)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
 	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
@@ -176,15 +388,13 @@ func TestServer_Version(t *testing.T) {
 			}
 
 			if tt.statuscode == 200 && tt.result != "" {
-
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
 				arch := runtime.GOOS + "/" + runtime.GOARCH
-
-				result := strings.Replace(string(data2), "go1.16", runtime.Version(), 1)
+				result := strings.Replace(data2, "go1.16", runtime.Version(), 1)
 				result = strings.Replace(result, "linux/amd64", arch, 1)
 
 				assert.Equal(t, result, string(body))
@@ -310,12 +520,12 @@ func TestServer_GetLease(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -388,12 +598,12 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -474,12 +684,12 @@ func TestServer_Renew_Invalid(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -560,12 +770,12 @@ func TestServer_Release_Invalid(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -668,12 +878,12 @@ func TestServer_Renew_(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -758,12 +968,12 @@ func TestServer_Release(t *testing.T) {
 
 			if tt.statuscode == 200 && tt.result != "" {
 
-				data2, err := ioutil.ReadFile("./testdata/" + tt.result)
+				data2, err := readTestData(tt.result)
 				if err != nil {
-					t.Fatalf("%v", err)
+					t.Fatalf("%v: %v", tt.name, err)
 				}
 
-				assert.Equal(t, string(data2), string(body))
+				assert.Equal(t, data2, string(body))
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
 			}
@@ -797,8 +1007,10 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
 
+	setDHCPClient(server, dhcpClient)
+
 	ctx, cancel := context.WithCancel(context.Background())
-	server.Init(ctx, config, version, dhcpClient)
+	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
 	time.Sleep(100 * time.Microsecond)
@@ -885,5 +1097,44 @@ func unmarshal(t *testing.T, data []byte, result interface{}, mime client.Conten
 			t.Fatalf("%v", err)
 			return
 		}
+	}
+}
+
+func readTestData(file string) (string, error) {
+	data, err := ioutil.ReadFile("./testdata/" + file)
+	if err != nil {
+		return "", err
+	}
+
+	result := string(data)
+
+	if runtime.GOOS == "windows" {
+		result = strings.ReplaceAll(result, "\n", "\r\n")
+	}
+
+	return result, nil
+}
+
+func setClientSet(server background.Server, c kube.Interface) {
+	restServer, ok := server.(*service.RestServer)
+	if ok {
+		pointerVal := reflect.ValueOf(restServer)
+		val := reflect.Indirect(pointerVal)
+		member := val.FieldByName("clientset")
+		ptrToY := unsafe.Pointer(member.UnsafeAddr())
+		realPtrToY := (*kube.Interface)(ptrToY)
+		*realPtrToY = c
+	}
+}
+
+func setDHCPClient(server background.Server, c dhcp.DHCPClient) {
+	restServer, ok := server.(*service.RestServer)
+	if ok {
+		pointerVal := reflect.ValueOf(restServer)
+		val := reflect.Indirect(pointerVal)
+		member := val.FieldByName("client")
+		ptrToY := unsafe.Pointer(member.UnsafeAddr())
+		realPtrToY := (*dhcp.DHCPClient)(ptrToY)
+		*realPtrToY = c
 	}
 }

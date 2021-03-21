@@ -18,12 +18,16 @@ type Patch struct {
 	labels      bool
 }
 
-func NewPatch(set PatchSet, annotations bool, labels bool) *Patch {
-	return &Patch{
-		set:         set,
-		annotations: annotations,
-		labels:      labels,
+func NewPatch(set ...PatchSet) *Patch {
+	rc := &Patch{
+		set: make([]interface{}, 0),
 	}
+
+	for _, p := range set {
+		rc.Add(p)
+	}
+
+	return rc
 }
 
 // Add a set of patches
@@ -100,7 +104,9 @@ func (p *Patch) getLabelPatch(o MetaObject, key string, value string) PatchSet {
 func (p *Patch) getAnnotationPatch(o MetaObject, key string, value string) PatchSet {
 	payload := []interface{}{}
 
-	if !p.annotations && (len(o.GetAnnotations())) == 0 {
+	anno := o.GetAnnotations()
+
+	if !p.annotations && len(anno) == 0 {
 		payload = append(payload, patchStruct{
 			Op:   "add",
 			Path: "/metadata/annotations",
