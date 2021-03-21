@@ -247,7 +247,7 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 					l, ok, cancel := c.store.Get(lease.Xid)
 					defer cancel()
 
-					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
+					if ok && (l.GetMsgType() == layers.DHCPMsgTypeAck || l.GetMsgType() == layers.DHCPMsgTypeNak) {
 						c.store.Remove(l.Xid)
 						lease2 = l
 						break
@@ -318,7 +318,7 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 					l, ok, cancel := c.store.Get(lease.Xid)
 					defer cancel()
 
-					if ok && l.GetMsgType() == layers.DHCPMsgTypeAck {
+					if ok && (l.GetMsgType() == layers.DHCPMsgTypeAck || l.GetMsgType() == layers.DHCPMsgTypeNak) {
 						c.store.Remove(l.Xid)
 						lease2 = l
 						break
