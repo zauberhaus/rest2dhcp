@@ -237,7 +237,7 @@ func TestGetLeaseSlow(t *testing.T) {
 		return chan1, chan2
 	}).AnyTimes()
 
-	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 100*time.Millisecond, 500*time.Millisecond, logger)
+	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 100*time.Millisecond, 1000*time.Millisecond, logger)
 
 	<-client.Start()
 
@@ -400,7 +400,7 @@ func TestRenew(t *testing.T) {
 
 			go func() {
 				// Offer
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 				var packet dhcp.DHCP4
 				data, err := ioutil.ReadFile("./testdata/Offer.json")
 				assert.NoError(t, err)
@@ -411,7 +411,7 @@ func TestRenew(t *testing.T) {
 				chan1 <- &packet
 
 				// Unknown Offer
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 				data, err = ioutil.ReadFile("./testdata/Offer.json")
 				assert.NoError(t, err)
 				err = json.Unmarshal(data, &packet)
@@ -420,13 +420,13 @@ func TestRenew(t *testing.T) {
 				chan1 <- &packet
 
 				// Empty packet
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 				logger.Test("receive empty packet")
 				time.Sleep(10 * time.Millisecond)
 				chan1 <- nil
 
 				// NAK
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 				data, err = ioutil.ReadFile("./testdata/Nak.json")
 				assert.NoError(t, err)
 				err = json.Unmarshal(data, &packet)
