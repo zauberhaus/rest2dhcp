@@ -568,6 +568,44 @@ func TestClientInvalidRenew(t *testing.T) {
 	<-server.Done()
 }
 
+func TestNewVersion(t *testing.T) {
+	buildDate := "date"
+	gitCommit := "commit"
+	tag := "tag"
+	treeState := "state"
+
+	version := client.NewVersion(buildDate, gitCommit, tag, treeState)
+
+	version2 := &client.Version{
+		BuildDate:    buildDate,
+		Compiler:     runtime.Compiler,
+		GitCommit:    gitCommit,
+		GitTreeState: treeState,
+		GitVersion:   tag,
+		GoVersion:    runtime.Version(),
+		Platform:     fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH),
+	}
+
+	assert.Equal(t, version2, version)
+}
+
+func TestLeaseToString(t *testing.T) {
+	lease := &client.Lease{
+		Hostname: "server",
+	}
+
+	txt := lease.String()
+
+	assert.Equal(t, "hostname: server\nmac: \"\"\nip: \"\"\nrenew: 0001-01-01T00:00:00Z\nrebind: 0001-01-01T00:00:00Z\nexpire: 0001-01-01T00:00:00Z\n", txt)
+}
+
+func TestClientError(t *testing.T) {
+	err := client.NewError(404, "not found")
+	assert.Equal(t, 404, err.Code())
+	assert.Equal(t, "not found", err.Msg())
+	assert.Equal(t, "(404 Not Found) not found", err.Error())
+}
+
 func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (background.Server, *mock.MockDHCPClient, context.CancelFunc) {
 	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
