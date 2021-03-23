@@ -631,8 +631,6 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	server.Init(ctx, config, getVersion())
 	<-server.Start(ctx)
 
-	time.Sleep(100 * time.Microsecond)
-
 	return server, dhcpClient, cancel
 }
 

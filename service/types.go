@@ -54,7 +54,7 @@ func NewQuery(request *http.Request) (*Query, error) {
 		if hostnameExp.MatchString(hostname) {
 			query.Hostname = hostname
 		} else {
-			return nil, fmt.Errorf("Invalid hostname")
+			return nil, fmt.Errorf("invalid hostname")
 		}
 	}
 
@@ -72,7 +72,7 @@ func NewQuery(request *http.Request) (*Query, error) {
 	if ok {
 		tmp := net.ParseIP(ip)
 		if tmp == nil {
-			return nil, fmt.Errorf("Invalid IP format")
+			return nil, fmt.Errorf("invalid IP format")
 		}
 
 		query.IP = tmp

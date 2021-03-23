@@ -30,7 +30,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 	"unsafe"
 
 	"github.com/golang/mock/gomock"
@@ -594,7 +593,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06"),
 			statuscode: 400,
 			content:    client.JSON,
-			body:       "Invalid hostname\n",
+			body:       "invalid hostname\n",
 		},
 	}
 	for _, tt := range tests {
@@ -671,7 +670,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.456"),
 			statuscode: 400,
 			content:    client.JSON,
-			body:       "Invalid IP format\n",
+			body:       "invalid IP format\n",
 		},
 		{
 			name:       "InvalidHostname",
@@ -679,7 +678,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06/192.168.1.4"),
 			statuscode: 400,
 			content:    client.JSON,
-			body:       "Invalid hostname\n",
+			body:       "invalid hostname\n",
 		},
 	}
 	for _, tt := range tests {
@@ -756,7 +755,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.456"),
 			statuscode: 400,
 			content:    client.JSON,
-			body:       "Invalid IP format\n",
+			body:       "invalid IP format\n",
 		},
 		{
 			name:       "InvalidHostname",
@@ -764,7 +763,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06/192.168.1.4"),
 			statuscode: 400,
 			content:    client.JSON,
-			body:       "Invalid hostname\n",
+			body:       "invalid hostname\n",
 		},
 	}
 	for _, tt := range tests {
@@ -1044,17 +1043,6 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
-	for {
-		_, err := http.Get(fmt.Sprintf("http://localhost:%v", port))
-		if err == nil {
-			break
-		}
-
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	time.Sleep(100 * time.Microsecond)
-
 	return server, dhcpClient, cancel
 }
 
@@ -1064,10 +1052,8 @@ func request(t *testing.T, method string, url string, header map[string]string, 
 		t.Fatalf("%v", err)
 	}
 
-	if header != nil {
-		for key, value := range header {
-			req.Header.Set(key, value)
-		}
+	for key, value := range header {
+		req.Header.Set(key, value)
 	}
 
 	client := &http.Client{}

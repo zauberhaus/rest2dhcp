@@ -317,6 +317,7 @@ func TestKubernetesExternalIPResolver_GetLocalIP(t *testing.T) {
 		target  net.IP
 		svc_err error
 		want    net.IP
+		wantNot []net.IP
 		logs    []int64
 		err     error
 	}{
@@ -344,22 +345,23 @@ func TestKubernetesExternalIPResolver_GetLocalIP(t *testing.T) {
 			err:    fmt.Errorf("empty local ip"),
 			logs:   []int64{0, 0, 0, 0, 0, 0},
 		},
-		{
-			name:   "Linux 2",
+		/*{
+			name:   "Linux 1",
 			local:  nil,
 			remote: remote,
 			target: extern,
 			err:    fmt.Errorf("empty local ip"),
 			logs:   []int64{0, 0, 0, 0, 0, 0},
 		},
+		*/
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if runtime.GOARCH == "linux" && strings.HasPrefix(tt.name, "NonLinux ") {
+			if runtime.GOOS == "linux" && strings.HasPrefix(tt.name, "NonLinux ") {
 				return
 			}
 
-			if runtime.GOARCH != "linux" && strings.HasPrefix(tt.name, "Linux ") {
+			if runtime.GOOS != "linux" && strings.HasPrefix(tt.name, "Linux ") {
 				return
 			}
 
@@ -382,7 +384,13 @@ func TestKubernetesExternalIPResolver_GetLocalIP(t *testing.T) {
 			ip, err := r.GetLocalIP(tt.target)
 			if tt.err == nil {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.want, ip.To4())
+				if tt.wantNot != nil && len(tt.wantNot) > 0 {
+					for _, ips := range tt.wantNot {
+						assert.NotEqual(t, tt.want, ips.To4())
+					}
+				} else {
+					assert.Equal(t, tt.want, ip.To4())
+				}
 			} else {
 				assert.EqualError(t, err, tt.err.Error())
 			}

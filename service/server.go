@@ -52,9 +52,7 @@ import (
 )
 
 var (
-	accept = regexp.MustCompile(`application/[json|yaml]`)
-
-	hostnameExp = regexp.MustCompile("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$")
+	hostnameExp = regexp.MustCompile(`^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$`)
 
 	renewPath = map[string]string{
 		"renew": "/ip/{hostname}/{mac}/{ip}",
@@ -251,8 +249,18 @@ func (s *RestServer) Start(ctx context.Context) chan bool {
 			}
 		}()
 
-		s.logger.Info("Server listen on ", s.Addr)
-		close(rc)
+		go func() {
+			for {
+				time.Sleep(10 * time.Millisecond)
+				_, err := http.Get(fmt.Sprintf("http://%v:%v", s.hostname, s.port))
+				if err == nil {
+					s.logger.Info("Server listen on ", s.Addr)
+					close(rc)
+					break
+				}
+			}
+		}()
+
 		<-ctx.Done()
 		s.client.Stop()
 
