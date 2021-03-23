@@ -42,7 +42,7 @@ func TestStoreSimple(t *testing.T) {
 	lease := dhcp.NewLease(layers.DHCPMsgTypeDiscover, xid1, nil, nil)
 	store.Set(lease)
 
-	lease = dhcp.NewLease(layers.DHCPMsgTypeDiscover, xid2, nil, nil)
+	lease = dhcp.NewLease(layers.DHCPMsgTypeAck, xid2, nil, nil)
 
 	err := store.Set(lease)
 	if assert.NoError(t, err) {
@@ -80,6 +80,18 @@ func TestStoreSimple(t *testing.T) {
 		if !store.Has(xid2) {
 			t.Fatalf("Lease %v not found", xid2)
 		}
+
+		l1, ok := store.GetItem(xid1)
+		assert.Nil(t, l1)
+		assert.False(t, ok)
+
+		b1 := store.HasStatus(xid2, layers.DHCPMsgTypeAck)
+		b2 := store.HasStatus(xid2, layers.DHCPMsgTypeOffer)
+		b3 := store.HasStatus(xid1, layers.DHCPMsgTypeAck)
+
+		assert.True(t, b1)
+		assert.False(t, b2)
+		assert.False(t, b3)
 	}
 
 	err = store.Set(nil)
