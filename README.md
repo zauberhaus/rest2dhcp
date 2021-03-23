@@ -2,6 +2,7 @@
 
 ![Tests](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
 ![Release](https://github.com/zauberhaus/rest2dhcp/workflows/Release/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/zauberhaus/rest2dhcp/badge.svg?branch=dev)](https://coveralls.io/github/zauberhaus/rest2dhcp?branch=dev)
 
 #### A REST web service gateway to a DHCP server
 The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.  
