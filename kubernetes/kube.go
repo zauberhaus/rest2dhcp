@@ -76,10 +76,6 @@ func NewKubeClient(kubeconfig string, logger logger.Logger) (KubeClient, error) 
 }
 
 func NewTestKubeClient(client kubernetes.Interface, logger logger.Logger) (KubeClient, error) {
-	if logger == nil {
-		return nil, fmt.Errorf("logger can't be nil")
-	}
-
 	return &KubeClientImpl{
 		client: client,
 		logger: logger,
