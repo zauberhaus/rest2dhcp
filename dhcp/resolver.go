@@ -54,7 +54,7 @@ func (l *LocalIPResolver) GetLocalIP(remote net.IP) (net.IP, error) {
 		if l.local != nil {
 			return l.local, nil
 		} else {
-			return nil, fmt.Errorf("No local server ip")
+			return nil, fmt.Errorf("empty local ip")
 		}
 	}
 }
@@ -141,7 +141,7 @@ func (r *KubernetesExternalIPResolver) GetRelayIP(ctx context.Context) (net.IP, 
 
 	result, err := r.client.GetService(ctx, r.namespace, r.service)
 	if err != nil {
-		return r.last, fmt.Errorf("Resolve external IP from %s/%s: %v", r.namespace, r.service, err)
+		return r.last, fmt.Errorf("resolve external IP from %s/%s: %v", r.namespace, r.service, err)
 	}
 
 	lbip := net.ParseIP(result.Spec.LoadBalancerIP)
@@ -155,23 +155,23 @@ func (r *KubernetesExternalIPResolver) GetRelayIP(ctx context.Context) (net.IP, 
 	} else {
 		ips := result.Spec.ExternalIPs
 		if len(ips) == 0 {
-			return r.last, fmt.Errorf("Service %s/%s has no external IP", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+			return r.last, fmt.Errorf("service %s/%s has no external IP", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 		}
 
 		if len(ips) > 1 {
-			return r.last, fmt.Errorf("Service %s/%s has multiple external IPs", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+			return r.last, fmt.Errorf("service %s/%s has multiple external IPs", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 		}
 
 		ip := net.ParseIP(ips[0])
 		if ip != nil {
 			if r.last == nil || r.last.To4().String() != lbip.To4().String() {
-				r.logger.Infof("Use external Kubernetes service ip %v (%s/%s)", ip, result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+				r.logger.Infof("Use Kubernetes external service ip %v (%s/%s)", ip, result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 				r.last = ip
 			}
 
 			return ip, nil
 		} else {
-			return r.last, fmt.Errorf("Invalid IP format: %s", ips[0])
+			return r.last, fmt.Errorf("invalid external IP format '%s' for service %v/%v", ips[0], result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 		}
 	}
 }
