@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"net"
 	"reflect"
 	"runtime"
@@ -40,7 +41,7 @@ import (
 )
 
 var (
-	_port   int32 = 51231
+	_port   int32 = 40000 + int32(rand.Intn(10000))
 	host          = "http://localhost"
 	ip            = net.IP{192, 168, 99, 173}
 	netmask       = net.IP{255, 255, 255, 0}
