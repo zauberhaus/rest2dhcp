@@ -3,7 +3,7 @@ FROM golang:1.16-alpine AS builder
 RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep git ca-certificates tzdata busybox-static
 RUN go install github.com/mjibson/esc@v0.2.0
 RUN go install github.com/mdomke/git-semver@latest
-RUN go install github.com/golang/mock/mockgen@v1.5.0
+RUN go get github.com/golang/mock/mockgen
 
 COPY scripts/install_upx.sh /usr/local/bin 
 RUN install_upx.sh

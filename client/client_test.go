@@ -47,10 +47,10 @@ var (
 	dns           = net.IP{192, 168, 99, 1}
 )
 
-func getPort() int32 {
+func getPort() uint16 {
 	atomic.AddInt32(&_port, 1)
 	_port++
-	return _port
+	return uint16(_port)
 }
 
 func TestClientVersion(t *testing.T) {
@@ -619,7 +619,7 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 
 	config := &service.ServerConfig{
 		Verbose: true,
-		Listen:  fmt.Sprintf(":%v", getPort()),
+		Port:    getPort(),
 	}
 
 	server := service.NewServer(logger)

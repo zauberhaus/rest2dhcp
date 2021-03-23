@@ -95,7 +95,8 @@ func TestEnvVariable(t *testing.T) {
 	os.Setenv("RELAY", relay.String())
 	os.Setenv("QUIET", "1")
 	os.Setenv("VERBOSE", "1")
-	os.Setenv("LISTEN", "test:1234")
+	os.Setenv("HOSTNAME", "test")
+	os.Setenv("PORT", "1234")
 	os.Setenv("KUBECONFIG", "abcdefg")
 	os.Setenv("NAMESPACE", "ns001")
 	os.Setenv("SERVICE", "svr001")
@@ -113,7 +114,8 @@ func TestEnvVariable(t *testing.T) {
 		assert.Equal(t, relay, config.Relay.To4(), "Relay wrong")
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
-		assert.Equal(t, "test:1234", config.Listen, "Listen wrong")
+		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
+		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")
 		assert.Equal(t, "ns001", config.KubeConfig.Namespace, "Namespace wrong")
 		assert.Equal(t, "svr001", config.KubeConfig.Service, "Service wrong")
@@ -168,7 +170,8 @@ func TestConfigVariable(t *testing.T) {
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
 		assert.Equal(t, false, config.AccessLog, "Access log wrong")
-		assert.Equal(t, "test:1234", config.Listen, "Listen wrong")
+		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
+		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")
 		assert.Equal(t, "ns001", config.KubeConfig.Namespace, "Namespace wrong")
 		assert.Equal(t, "svr001", config.KubeConfig.Service, "Service wrong")
@@ -184,7 +187,8 @@ func TestConfigVariable(t *testing.T) {
 		"-q",
 		"-v",
 		"--access-log=false",
-		"--listen", "test:1234",
+		"-H", "test",
+		"-p", "1234",
 		"--kubeconfig", "abcdefg",
 		"--namespace", "ns001",
 		"--service", "svr001",
@@ -219,7 +223,8 @@ func TestConfigFile(t *testing.T) {
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
 		assert.Equal(t, false, config.AccessLog, "Access log wrong")
-		assert.Equal(t, "hier:7625", config.Listen, "Listen wrong")
+		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
+		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")
 		assert.Equal(t, "ns001", config.KubeConfig.Namespace, "Namespace wrong")
 		assert.Equal(t, "svr001", config.KubeConfig.Service, "Service wrong")

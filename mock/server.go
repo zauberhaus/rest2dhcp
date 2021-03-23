@@ -80,10 +80,10 @@ func (mr *MockServerMockRecorder) Init(ctx interface{}, args ...interface{}) *go
 }
 
 // Port mocks base method.
-func (m *MockServer) Port() string {
+func (m *MockServer) Port() uint16 {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Port")
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(uint16)
 	return ret0
 }
 

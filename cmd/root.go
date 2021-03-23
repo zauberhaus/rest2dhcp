@@ -146,7 +146,9 @@ func (r *RootCommand) init() {
 	r.Flags().IPVarP(&r.config.Local, "client", "c", nil, "Local IP for DHCP relay client")
 	r.Flags().IPVarP(&r.config.Relay, "relay", "r", nil, "Relay IP for DHCP relay client")
 
-	r.Flags().StringVarP(&r.config.Listen, "listen", "l", ":8080", "Address of the web service")
+	//r.Flags().StringVarP(&r.config.Listen, "listen", "l", ":8080", "Address of the web service")
+	r.Flags().StringVarP(&r.config.Hostname, "hostname", "H", "", "Hostname to listen on")
+	r.Flags().Uint16VarP(&r.config.Port, "port", "p", 8080, "Port to listen on")
 	r.Flags().StringP("mode", "m", "auto", "DHCP connection mode: "+strings.Join(dhcp.AllConnectionTypes, ", "))
 
 	r.Flags().DurationVarP(&r.config.Timeout, "timeout", "t", 30*time.Second, "Service query timeout")

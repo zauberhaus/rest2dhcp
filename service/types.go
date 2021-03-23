@@ -88,7 +88,8 @@ type ServerConfig struct {
 	DHCPServer  string                  `yaml:"dhcpserver,omitempty" json:"dhcpserver,omitempty" xml:"dhcpserver,omitempty"`
 	Relay       net.IP                  `yaml:"relay,omitempty" json:"relay,omitempty" xml:"relay,omitempty"`
 	Mode        dhcp.ConnectionType     `yaml:"mode,omitempty" json:"mode,omitempty" xml:"mode,omitempty"`
-	Listen      string                  `yaml:"listen,omitempty" json:"listen,omitempty" xml:"listen,omitempty"`
+	Hostname    string                  `yaml:"hostname,omitempty" json:"hostname,omitempty" xml:"hostname,omitempty"`
+	Port        uint16                  `yaml:"port,omitempty" json:"port,omitempty" xml:"port,omitempty"`
 	Timeout     time.Duration           `yaml:"timeout,omitempty" json:"timeout,omitempty" xml:"timeout,omitempty"`
 	DHCPTimeout time.Duration           `yaml:"dhcpTimeout,omitempty" json:"dhcpTimeout,omitempty" xml:"dhcpTimeout,omitempty"`
 	Retry       time.Duration           `yaml:"retry,omitempty" json:"retry,omitempty" xml:"retry,omitempty"`

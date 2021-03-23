@@ -8,7 +8,8 @@ retry: 38000ms
 quiet: true
 verbose: true
 access-log: false
-listen: "hier:7625"
+hostname: "test"
+port: 1234
 kubeconfig: abcdefg
 namespace: ns001
 service: svr001

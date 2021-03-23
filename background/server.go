@@ -9,5 +9,5 @@ type Server interface {
 	Done() chan bool
 
 	Hostname() string
-	Port() string
+	Port() uint16
 }

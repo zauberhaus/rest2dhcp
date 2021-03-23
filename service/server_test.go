@@ -20,10 +20,9 @@ package service_test
 
 import (
 	"context"
-	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"reflect"
@@ -43,7 +42,6 @@ import (
 	"github.com/zauberhaus/rest2dhcp/logger"
 	"github.com/zauberhaus/rest2dhcp/mock"
 	"github.com/zauberhaus/rest2dhcp/service"
-	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kube "k8s.io/client-go/kubernetes"
@@ -52,12 +50,12 @@ import (
 
 //go:generate mockgen -source ../dhcp/client.go  -package mock -destination ../mock/client.go
 
-var _port int32 = 57011
+var _port int32 = 50000 + int32(rand.Intn(10000))
 
-func getPort() int32 {
+func getPort() uint16 {
 	atomic.AddInt32(&_port, 1)
 	_port++
-	return _port
+	return uint16(_port)
 }
 
 func TestNewServer(t *testing.T) {
@@ -77,7 +75,8 @@ func TestNewServer(t *testing.T) {
 	port := getPort()
 
 	config := &service.ServerConfig{
-		Listen: fmt.Sprintf(":%v", port),
+		Hostname: "localhost",
+		Port:     port,
 	}
 	version := client.NewVersion("now", "123456", "0001", "dirty")
 
@@ -93,7 +92,7 @@ func TestNewServer(t *testing.T) {
 	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
-	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+	response := request(t, "GET", getRequestUrl(server, "/version"), map[string]string{
 		"Accept": "text/dummy",
 	})
 
@@ -163,7 +162,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 			config := tt.config
 			if config == nil {
 				config = &service.ServerConfig{
-					Listen: fmt.Sprintf(":%v", port),
+					Port: port,
 					KubeConfig: &dhcp.KubeServiceConfig{
 						Config:    "./testdata/config.yaml",
 						Namespace: "ns001",
@@ -171,7 +170,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 					},
 				}
 			} else {
-				config.Listen = fmt.Sprintf(":%v", port)
+				config.Port = port
 			}
 
 			ctrl := gomock.NewController(t)
@@ -219,7 +218,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 			server.Init(ctx, config, version)
 			<-server.Start(ctx)
 
-			response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+			response := request(t, "GET", fmt.Sprintf("http://localhost:%v/version", +server.Port()), map[string]string{
 				"Accept": "text/dummy",
 			})
 
@@ -274,7 +273,7 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	port := getPort()
 
 	config := &service.ServerConfig{
-		Listen: fmt.Sprintf(":%v", port),
+		Port: port,
 		KubeConfig: &dhcp.KubeServiceConfig{
 			Config:    "./testdata/config.yaml",
 			Namespace: "ns001",
@@ -297,7 +296,7 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
-	response := request(t, "GET", "http://localhost:"+server.Port()+"/version", map[string]string{
+	response := request(t, "GET", fmt.Sprintf("http://localhost:%v/version", +server.Port()), map[string]string{
 		"Accept": "text/dummy",
 	})
 
@@ -312,9 +311,8 @@ func TestServer_Version(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 6)
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 7)
 	server, _, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -325,27 +323,40 @@ func TestServer_Version(t *testing.T) {
 		content    string
 		result     string
 		body       string
+		follow     bool
 		do         interface{}
 	}{
 		{
 			name:   "Invalid Accept Content Type",
 			method: "GET",
-			url:    "http://localhost:" + port + "/version",
+			url:    getRequestUrl(server, "/version"),
 			header: map[string]string{
 				"Accept": "text/dummy",
 			},
 			statuscode: 415,
 		},
 		{
-			name:       "Call API doc",
+			name:       "Call api",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/api",
+			url:        getRequestUrl(server, "/api"),
+			statuscode: http.StatusFound,
+		},
+		{
+			name:       "Call doc",
+			method:     "GET",
+			url:        getRequestUrl(server, "/doc/"),
 			statuscode: 200,
+		},
+		{
+			name:       "Call doc",
+			method:     "GET",
+			url:        getRequestUrl(server, "/doc/", "localhost"),
+			statuscode: http.StatusFound,
 		},
 		{
 			name:       "GetVersion_json",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/version",
+			url:        getRequestUrl(server, "/version"),
 			statuscode: 200,
 			content:    client.JSON,
 			result:     "version.json",
@@ -353,7 +364,7 @@ func TestServer_Version(t *testing.T) {
 		{
 			name:       "GetVersion_yaml",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/version",
+			url:        getRequestUrl(server, "/version"),
 			statuscode: 200,
 			content:    client.YAML,
 			result:     "version.yaml",
@@ -361,7 +372,7 @@ func TestServer_Version(t *testing.T) {
 		{
 			name:       "GetVersion_xml",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/version",
+			url:        getRequestUrl(server, "/version"),
 			statuscode: 200,
 			content:    client.XML,
 			result:     "version.xml",
@@ -377,7 +388,7 @@ func TestServer_Version(t *testing.T) {
 				tt.header["Accept"] = tt.content
 			}
 
-			response := request(t, tt.method, tt.url, tt.header)
+			response := request(t, tt.method, tt.url, tt.header, tt.follow)
 			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
 				t.Fail()
 			}
@@ -415,9 +426,8 @@ func TestServer_GetLease(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 4)
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 5)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -433,7 +443,7 @@ func TestServer_GetLease(t *testing.T) {
 		{
 			name:       "GetLease hostname",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname",
+			url:        getRequestUrl(server, "/ip/hostname"),
 			statuscode: 200,
 			content:    client.JSON,
 			result:     "lease.json",
@@ -450,7 +460,7 @@ func TestServer_GetLease(t *testing.T) {
 		{
 			name:       "GetLease hostname/mac",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname/09:08:07:06:05:04",
+			url:        getRequestUrl(server, "/ip/hostname/09:08:07:06:05:04"),
 			statuscode: 200,
 			content:    client.JSON,
 			result:     "lease2.json",
@@ -467,7 +477,7 @@ func TestServer_GetLease(t *testing.T) {
 		{
 			name:       "GetLeaseNAK",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname",
+			url:        getRequestUrl(server, "/ip/hostname"),
 			statuscode: 406,
 			content:    client.JSON,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
@@ -483,7 +493,7 @@ func TestServer_GetLease(t *testing.T) {
 		{
 			name:       "GetLeaseFailed",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname",
+			url:        getRequestUrl(server, "/ip/hostname"),
 			statuscode: 400,
 			content:    client.JSON,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
@@ -493,6 +503,19 @@ func TestServer_GetLease(t *testing.T) {
 				return rc
 			},
 			body: "TestError\n",
+		},
+		{
+			name:       "GetLeaseTimeput",
+			method:     "GET",
+			url:        getRequestUrl(server, "/ip/hostname"),
+			statuscode: 408,
+			content:    client.JSON,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				rc <- nil
+				return rc
+			},
+			body: "Request Timeout\n",
 		},
 	}
 	for _, tt := range tests {
@@ -545,7 +568,6 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 	logger := mock.NewTestLogger()
 	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
 	server, _, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -561,7 +583,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 		{
 			name:       "InvalidMacAddress",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05_1"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
@@ -569,7 +591,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 		{
 			name:       "InvalidHostname",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06",
+			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "Invalid hostname\n",
@@ -623,7 +645,6 @@ func TestServer_Renew_Invalid(t *testing.T) {
 	logger := mock.NewTestLogger()
 	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
 	server, _, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -639,7 +660,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 		{
 			name:       "InvalidMacAddress",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1/192.168.1.1",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05_1/192.168.1.1"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
@@ -647,7 +668,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 		{
 			name:       "InvalidIP",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.456",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.456"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "Invalid IP format\n",
@@ -655,7 +676,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 		{
 			name:       "InvalidHostname",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06/192.168.1.4",
+			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06/192.168.1.4"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "Invalid hostname\n",
@@ -709,7 +730,6 @@ func TestServer_Release_Invalid(t *testing.T) {
 	logger := mock.NewTestLogger()
 	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
 	server, _, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -725,7 +745,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 		{
 			name:       "InvalidMacAddress",
 			method:     "DELETE",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05_1/192.168.1.1",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05_1/192.168.1.1"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "address 01:02:03:04:05_1: invalid MAC address\n",
@@ -733,7 +753,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 		{
 			name:       "InvalidIP",
 			method:     "DELETE",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.456",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.456"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "Invalid IP format\n",
@@ -741,7 +761,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 		{
 			name:       "InvalidHostname",
 			method:     "GET",
-			url:        "http://localhost:" + port + "/ip/host_name/01:02:03:04:05:06/192.168.1.4",
+			url:        getRequestUrl(server, "/ip/host_name/01:02:03:04:05:06/192.168.1.4"),
 			statuscode: 400,
 			content:    client.JSON,
 			body:       "Invalid hostname\n",
@@ -793,7 +813,7 @@ func TestServer_Renew_(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 4)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -809,7 +829,7 @@ func TestServer_Renew_(t *testing.T) {
 	}{{
 		name:       "Renew",
 		method:     "GET",
-		url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+		url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
 		statuscode: 200,
 		content:    client.JSON,
 		result:     "lease.json",
@@ -827,7 +847,7 @@ func TestServer_Renew_(t *testing.T) {
 		{
 			name:       "Renew NAK",
 			method:     "GET",
-			url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
 			statuscode: 406,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
 				rc := make(chan *dhcp.Lease, 1)
@@ -842,7 +862,7 @@ func TestServer_Renew_(t *testing.T) {
 		{
 			name:       "Renew Fail",
 			method:     "GET",
-			url:        "http://localhost:" + server.Port() + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
 			statuscode: 400,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
 				rc := make(chan *dhcp.Lease, 1)
@@ -851,6 +871,18 @@ func TestServer_Renew_(t *testing.T) {
 				return rc
 			},
 			body: "TestError\n",
+		},
+		{
+			name:       "Renew Timeout",
+			method:     "GET",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
+			statuscode: 408,
+			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *dhcp.Lease {
+				rc := make(chan *dhcp.Lease, 1)
+				rc <- nil
+				return rc
+			},
+			body: "Request Timeout\n",
 		},
 	}
 	for _, tt := range tests {
@@ -903,7 +935,6 @@ func TestServer_Release(t *testing.T) {
 	logger := mock.NewTestLogger()
 	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
-	port := server.Port()
 
 	tests := []struct {
 		name       string
@@ -919,7 +950,7 @@ func TestServer_Release(t *testing.T) {
 		{
 			name:       "Release",
 			method:     "DELETE",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
 			statuscode: 200,
 			content:    client.JSON,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
@@ -932,7 +963,7 @@ func TestServer_Release(t *testing.T) {
 		{
 			name:       "ReleaseFail",
 			method:     "DELETE",
-			url:        "http://localhost:" + port + "/ip/hostname/01:02:03:04:05:06/192.168.1.99",
+			url:        getRequestUrl(server, "/ip/hostname/01:02:03:04:05:06/192.168.1.99"),
 			statuscode: 400,
 			content:    client.JSON,
 			do: func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
@@ -1000,7 +1031,7 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	dhcpClient.EXPECT().Stop()
 
 	config := &service.ServerConfig{
-		Listen: fmt.Sprintf(":%v", port),
+		Port: port,
 	}
 	version := client.NewVersion("now", "123456", "0001", "dirty")
 
@@ -1013,12 +1044,21 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (backgro
 	server.Init(ctx, config, version)
 	<-server.Start(ctx)
 
+	for {
+		_, err := http.Get(fmt.Sprintf("http://localhost:%v", port))
+		if err == nil {
+			break
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	time.Sleep(100 * time.Microsecond)
 
 	return server, dhcpClient, cancel
 }
 
-func request(t *testing.T, method string, url string, header map[string]string) *http.Response {
+func request(t *testing.T, method string, url string, header map[string]string, follow ...bool) *http.Response {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -1031,73 +1071,19 @@ func request(t *testing.T, method string, url string, header map[string]string) 
 	}
 
 	client := &http.Client{}
+
+	if len(follow) > 0 && !follow[0] {
+		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
 	return resp
-}
-
-func checkResult(t *testing.T, resp *http.Response, hostname string, mime client.ContentType) *client.Lease {
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("Wrong http status: %v", resp.Status)
-	}
-
-	if mime == client.Unknown {
-		mime = client.YAML
-	}
-
-	value := resp.Header.Get("Content-Type")
-	if client.ContentType(value) != mime {
-		t.Fatalf("Wrong content type: %v != %v", value, mime)
-	}
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	var result client.Lease
-	unmarshal(t, data, &result, mime)
-
-	if result.Hostname != hostname {
-		t.Fatalf("Wrong hostname: '%v' != '%v'", result.Hostname, hostname)
-	}
-
-	if result.IP == nil {
-		t.Fatalf("Invalid return ip")
-	}
-
-	if result.Mac == nil {
-		t.Fatalf("Empty mac")
-	}
-
-	resp.Body.Close()
-	return &result
-}
-
-func unmarshal(t *testing.T, data []byte, result interface{}, mime client.ContentType) {
-	switch mime {
-	case client.YAML:
-		err := yaml.Unmarshal(data, result)
-		if err != nil {
-			t.Fatalf("%v", err)
-			return
-		}
-	case client.JSON:
-		err := json.Unmarshal(data, result)
-		if err != nil {
-			t.Fatalf("%v", err)
-			return
-		}
-	case client.XML:
-		err := xml.Unmarshal(data, result)
-		if err != nil {
-			t.Fatalf("%v", err)
-			return
-		}
-	}
 }
 
 func readTestData(file string) (string, error) {
@@ -1113,6 +1099,14 @@ func readTestData(file string) (string, error) {
 	}
 
 	return result, nil
+}
+
+func getRequestUrl(server background.Server, path ...string) string {
+	if len(path) != 2 || path[1] == "" {
+		return fmt.Sprintf("http://%v:%v%v", server.Hostname(), server.Port(), path[0])
+	} else {
+		return fmt.Sprintf("http://%v:%v%v", path[1], server.Port(), path[0])
+	}
 }
 
 func setClientSet(server background.Server, c kube.Interface) {

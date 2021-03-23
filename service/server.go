@@ -91,7 +91,7 @@ type RestServer struct {
 	info     *client.Version
 	config   *ServerConfig
 	hostname string
-	port     string
+	port     uint16
 	logger   logger.Logger
 
 	clientset kube.Interface
@@ -139,24 +139,20 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		s.logger.Errorf("Error get hostname: %v", err)
+	if config.Hostname != "" {
+		s.hostname = config.Hostname
+	} else {
+		hostname, err := os.Hostname()
+		if err != nil {
+			s.logger.Errorf("Error get hostname: %v", err)
+		}
+
+		s.hostname = hostname
 	}
 
-	h, p, err := net.SplitHostPort(config.Listen)
-	if err != nil {
-		s.logger.Errorf("Error get parse listen: %v", err)
-	}
-
-	if h == "localhost" {
-		hostname = h
-	}
-
-	s.hostname = hostname
-	s.port = p
+	s.port = config.Port
 	s.config = config
-	s.Addr = config.Listen
+	s.Addr = fmt.Sprintf("%v:%v", config.Hostname, config.Port)
 
 	var resolver dhcp.IPResolver = nil
 
@@ -222,7 +218,7 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		if err == nil {
 			old := string(data)
 			new := strings.Replace(old, "version: \"1.0.0\"", "version: \""+version.GitVersion+"\"", 1)
-			new2 := strings.Replace(new, "host: \"localhost:8080\"", "host: \""+s.hostname+":"+s.port+"\"", 1)
+			new2 := strings.Replace(new, "host: \"localhost:8080\"", fmt.Sprintf("host: \"%v:%v\"", s.hostname, s.port), 1)
 			if old != new2 {
 				file.size = int64(len(new2))
 				file.compressed = encode([]byte(new2))
@@ -237,7 +233,7 @@ func (s *RestServer) Hostname() string {
 	return s.hostname
 }
 
-func (s *RestServer) Port() string {
+func (s *RestServer) Port() uint16 {
 	return s.port
 }
 
@@ -280,6 +276,34 @@ func (s *RestServer) Done() chan bool {
 }
 
 func (s *RestServer) setup(router *mux.Router) {
+	if s.hostname != "localhost" {
+		router.
+			Host("localhost").
+			Methods("GET").
+			PathPrefix("/doc/").
+			HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+				http.Redirect(res, req, fmt.Sprintf("http://%s:%v/%s", s.hostname, s.port, req.URL), http.StatusFound)
+			})
+
+		router.
+			Name("/api").
+			Methods("GET").
+			PathPrefix("/api").
+			HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+				if s.port != 80 {
+					http.Redirect(res, req, fmt.Sprintf("http://%s:%v/doc/", s.hostname, s.port), http.StatusFound)
+				} else {
+					http.Redirect(res, req, fmt.Sprintf("http://%s:%v/doc/", s.hostname, s.port), http.StatusFound)
+				}
+			})
+	} else {
+		router.
+			Name("/api").
+			Methods("GET").
+			PathPrefix("/api").
+			Handler(RedirectHandler("/doc/", http.StatusTemporaryRedirect))
+	}
+
 	router.
 		Name("version").
 		Methods("GET").
@@ -297,12 +321,6 @@ func (s *RestServer) setup(router *mux.Router) {
 		Methods("GET").
 		Path("/api/swagger.yaml").
 		Handler(http.FileServer(FS(false)))
-
-	router.
-		Name("/api").
-		Methods("GET").
-		PathPrefix("/api").
-		Handler(RedirectHandler("/doc/"))
 
 	router.
 		Name("/doc").
@@ -333,7 +351,6 @@ func (s *RestServer) setup(router *mux.Router) {
 			Path(p).
 			HandlerFunc(s.lease)
 	}
-
 }
 
 func (s *RestServer) version(w http.ResponseWriter, r *http.Request) {
