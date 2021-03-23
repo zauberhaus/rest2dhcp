@@ -153,9 +153,9 @@ func TestGetLease(t *testing.T) {
 	assert.Equal(t, net.IP{192, 168, 1, 1}, lease.GetDNS())
 	assert.Equal(t, net.IP{255, 255, 252, 0}, lease.GetSubnetMask())
 
-	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 1*time.Second)
-	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 1*time.Second)
-	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 1*time.Second)
+	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 30*time.Second)
 
 	lease = <-client.Renew(context.Background(), "hostname", net.HardwareAddr{0, 1, 2, 3, 4, 5}, lease.YourClientIP)
 
@@ -251,9 +251,9 @@ func TestGetLeaseSlow(t *testing.T) {
 	assert.Equal(t, net.IP{192, 168, 1, 1}, lease.GetDNS())
 	assert.Equal(t, net.IP{255, 255, 252, 0}, lease.GetSubnetMask())
 
-	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 1*time.Second)
-	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 1*time.Second)
-	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 1*time.Second)
+	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 30*time.Second)
 
 	lease = <-client.Renew(context.Background(), "hostname", net.HardwareAddr{0, 1, 2, 3, 4, 5}, lease.YourClientIP)
 
@@ -351,9 +351,9 @@ func TestGetLeaseVerySlow(t *testing.T) {
 	assert.Equal(t, net.IP{192, 168, 1, 1}, lease.GetDNS())
 	assert.Equal(t, net.IP{255, 255, 252, 0}, lease.GetSubnetMask())
 
-	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 10*time.Second)
-	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 10*time.Second)
-	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 10*time.Second)
+	assert.Less(t, time.Now().Add(10*24*time.Hour).Sub(lease.GetExpireTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(210*time.Hour).Sub(lease.GetRebindTime()), 30*time.Second)
+	assert.Less(t, time.Now().Add(5*24*time.Hour).Sub(lease.GetRenewalTime()), 30*time.Second)
 
 	lease = <-client.Renew(context.Background(), "hostname", net.HardwareAddr{0, 1, 2, 3, 4, 5}, lease.YourClientIP)
 
