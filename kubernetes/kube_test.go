@@ -46,6 +46,17 @@ func TestNewKubeClient(t *testing.T) {
 
 }
 
+func TestNewTestKubeClient(t *testing.T) {
+	clientset := testclient.NewSimpleClientset()
+	logger := mock.NewTestLogger()
+
+	client, err := kubernetes.NewTestKubeClient(clientset, logger)
+	assert.NoError(t, err)
+	assert.NotNil(t, client)
+	assert.Equal(t, clientset, getClientSet(client))
+	assert.Equal(t, logger, getLogger(client))
+}
+
 func TestKubeClientImpl_GetConfigMap(t *testing.T) {
 	logger := mock.NewTestLogger()
 	clientset := testclient.NewSimpleClientset()
@@ -326,6 +337,15 @@ func setClientSet(k *kubernetes.KubeClientImpl, c kube.Interface) {
 	*realPtrToY = c
 }
 
+func getClientSet(k interface{}) kube.Interface {
+	pointerVal := reflect.ValueOf(k)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("client")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*kube.Interface)(ptrToY)
+	return *realPtrToY
+}
+
 func setLogger(k *kubernetes.KubeClientImpl, l logger.Logger) {
 	pointerVal := reflect.ValueOf(k)
 	val := reflect.Indirect(pointerVal)
@@ -333,4 +353,13 @@ func setLogger(k *kubernetes.KubeClientImpl, l logger.Logger) {
 	ptrToY := unsafe.Pointer(member.UnsafeAddr())
 	realPtrToY := (*logger.Logger)(ptrToY)
 	*realPtrToY = l
+}
+
+func getLogger(k interface{}) logger.Logger {
+	pointerVal := reflect.ValueOf(k)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("logger")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*logger.Logger)(ptrToY)
+	return *realPtrToY
 }
