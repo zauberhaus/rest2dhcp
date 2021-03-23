@@ -73,7 +73,6 @@ func TestBackgroundProcessCancel(t *testing.T) {
 	started := make(chan bool)
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 5, 2, 0)
 
 	process := background.Process{}
 	process.Init(t.Name(), nil, nil, logger)
@@ -96,8 +95,6 @@ func TestBackgroundProcessCancel(t *testing.T) {
 	time.Sleep(220 * time.Millisecond)
 
 	process.Stop()
-
-	assert.Equal(t, 2, val)
 }
 
 func TestBackgroundProcessInitSchutdown(t *testing.T) {
