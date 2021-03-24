@@ -17,7 +17,7 @@ WORKDIR $SRC
 
 RUN go generate ./service/server.go
 RUN go build -ldflags "-X main.gitCommit=`git rev-parse --short HEAD` -X main.buildTime=`date -u -I'seconds'` -X main.treeState=`git diff --stat | grep "" > /dev/null  && echo dirty || echo clean` -X main.tag=`git semver -prefix v` -linkmode external -extldflags -static -s -w" -o /out/rest2dhcp
-RUN upx --best --lzma /out/rest2dhcp
+RUN upx --best /out/rest2dhcp
 
 FROM scratch
 COPY --from=0 /out/rest2dhcp /rest2dhcp
