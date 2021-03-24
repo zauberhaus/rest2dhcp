@@ -1,6 +1,6 @@
 # rest2dhcp
 
-![Tests](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
+![Dev](https://github.com/zauberhaus/rest2dhcp/workflows/Tests/badge.svg)
 ![Release](https://github.com/zauberhaus/rest2dhcp/workflows/Release/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/zauberhaus/rest2dhcp/badge.svg?branch=dev)](https://coveralls.io/github/zauberhaus/rest2dhcp?branch=dev)
 
@@ -8,6 +8,8 @@
 The service acts as a REST web service for clients and as a DHCP relay to the DHCP server.  
 Therefore, it's possible to request IPs for more than one hostname or MAC address.
 ```
+A REST web service gateway to a DHCP server
+
 Usage:
   rest2dhcp [flags]
   rest2dhcp [command]
@@ -17,16 +19,22 @@ Available Commands:
   version     Show the version info
 
 Flags:
+  -a, --access-log              Print access log messages (default true)
   -c, --client ip               Local IP for DHCP relay client
       --config string           Config file (default is $HOME/rest2dhcp.yaml)
+  -S, --dhcp-server string      DHCP server name
   -d, --dhcp-timeout duration   DHCP query timeout (default 5s)
   -h, --help                    help for rest2dhcp
-  -l, --listen string           Address of the web service (default ":8080")
-  -m, --mode string             DHCP connection mode: auto, udp, packet, fritzbox, broken (default "auto")
+  -H, --hostname string         Hostname to listen on
+  -k, --kubeconfig string       (optional) absolute path to the kubeconfig file (default "/home/dil/.kube/config")
+  -m, --mode string             DHCP connection mode: udp, dual, fritzbox, packet, broken (default "auto")
+  -n, --namespace string        Kubernetes namespace (default "default")
+  -p, --port uint16             Port to listen on (default 8080)
   -q, --quiet                   Only access log messages
   -r, --relay ip                Relay IP for DHCP relay client
   -x, --retry duration          DHCP retry time (default 15s)
   -s, --server ip               DHCP server ip
+  -K, --service string          Kubernetes service name
   -t, --timeout duration        Service query timeout (default 30s)
   -v, --verbose                 Verbose messages
 ```
@@ -38,7 +46,8 @@ Flags:
 | client       | CLIENT       | IP of the local DHCP listener    | IP to default gateway |
 | server       | SERVER       | IP of the remote DHCP server     | Default gateway       |
 | relay        | RELAY        | Published DHCP relay IP          | Client IP             |
-| listen       | LISTEN       | IP:Port of the web listener      | :8080                 |
+| hostname     | HOSTNAME     | Hostname to listen on            |                       |
+| port         | PORT         | Port of the web listener         | 8080                  |
 | mode         | MODE         | Connection mode                  | auto                  |
 | timeout      | TIMEOUT      | Web service timeout              | 30s                   |
 | dhcp-timeout | DHCP_TIMEOUT | DHCP response timeout            | 5s                    |
