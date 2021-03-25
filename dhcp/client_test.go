@@ -337,7 +337,7 @@ func TestGetLeaseVerySlow(t *testing.T) {
 		return chan1, chan2
 	}).AnyTimes()
 
-	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 300*time.Millisecond, 100*time.Millisecond, logger)
+	client := dhcp.NewClient(ipResolver, connResolver, dhcp.UDP, 1000*time.Millisecond, 100*time.Millisecond, logger)
 
 	<-client.Start()
 
