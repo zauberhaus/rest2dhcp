@@ -32,24 +32,6 @@ import (
 	"github.com/zauberhaus/rest2dhcp/mock"
 )
 
-/*
-func TestDualConn(t *testing.T) {
-	clientTest.Lock()
-	defer clientTest.Unlock()
-
-	t.Run("DualConn", DualConn())
-	t.Run("GetPort", DualConnGetPort())
-	t.Run("InvalidBlock", DualConnReadInvalidBlock())
-	t.Run("ReadFail", DualConnReadFail())
-	t.Run("WriteFail", DualConnWriteFail())
-	t.Run("SendSetDeadlineFail", DualConnSendSetDeadlineFail())
-	t.Run("ReceiveSetDeadlineFail", DualConnReceiveSetDeadlineFail())
-	t.Run("Block", DualConnBlock())
-	t.Run("CancelSendContext", DualConnCancelSendContext())
-	t.Run("CancelReceiveContext", DualConnCancelReceiveContext())
-}
-*/
-
 func TestDualConn(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -110,7 +92,7 @@ func TestDualConn(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
 
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		assert.Equal(t, l, 252)
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -119,7 +101,7 @@ func TestDualConn(t *testing.T) {
 	})
 
 	c3, c2 := conn.Receive(ctx)
-	choice2(c3, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c3, c2, long, func(dhcp *dhcp.DHCP4) {
 		var v1 = *dhcp
 		var v2 = *(lease.DHCP4)
 		assert.EqualValues(t, v1.DHCPv4.Payload, v2.DHCPv4.Payload)
@@ -210,7 +192,7 @@ func TestDualConnReadInvalidBlock(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -264,7 +246,8 @@ func TestDualConnReadFail(t *testing.T) {
 
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -324,7 +307,7 @@ func TestDualConnWriteFail(t *testing.T) {
 	ctx := context.Background()
 
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -375,7 +358,7 @@ func TestDualConnSendSetDeadlineFail(t *testing.T) {
 
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -423,7 +406,7 @@ func TestDualConnReceiveSetDeadlineFail(t *testing.T) {
 
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -483,7 +466,7 @@ func TestDualConnBlock(t *testing.T) {
 
 	ctx2 := context.Background()
 	c1, c2 := conn.Send(ctx2, dhcp4)
-	choice1(c1, c2, 100*time.Millisecond, func(l int) {
+	choice1(c1, c2, 200*time.Millisecond, func(l int) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -493,7 +476,7 @@ func TestDualConnBlock(t *testing.T) {
 
 	cancel()
 
-	choice1(c1, c2, 1*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		logger.Info("Unblocked")
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -505,137 +488,131 @@ func TestDualConnBlock(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func DualConnCancelSendContext() func(t *testing.T) {
-	return func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+func TestDualConnCancelSendContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-		local, remote := getTestAddr()
+	local, remote := getTestAddr()
 
-		out := mock.NewMockPacketConn(ctrl)
-		in := mock.NewMockUDPPacketConn(ctrl)
+	out := mock.NewMockPacketConn(ctrl)
+	in := mock.NewMockUDPPacketConn(ctrl)
 
-		logger := mock.NewTestLogger()
-		defer logger.Assert(t, 0, 0, 0, 4, 2, 0)
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0)
 
-		out.EXPECT().
-			LocalAddr().
-			Return(local).AnyTimes()
+	out.EXPECT().
+		LocalAddr().
+		Return(local).AnyTimes()
 
-		out.EXPECT().
-			Close().
-			Return(nil)
+	out.EXPECT().
+		Close().
+		Return(nil)
 
-		in.EXPECT().
-			Close().
-			Return(nil)
+	in.EXPECT().
+		Close().
+		Return(nil)
 
-		out.EXPECT().
-			SetWriteDeadline(gomock.Any()).
-			DoAndReturn(func(t time.Time) error {
-				fmt.Printf("set deadline %v\n", t)
-				return nil
-			}).
-			Times(2)
+	out.EXPECT().
+		SetWriteDeadline(gomock.Any()).
+		DoAndReturn(func(t time.Time) error {
+			fmt.Printf("set deadline %v\n", t)
+			return nil
+		}).
+		Times(2)
 
-		out.EXPECT().
-			WriteTo(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(p []byte, addr net.Addr) (n int, err error) {
-				time.Sleep(5 * time.Second)
-				return 0, nil
-			})
+	out.EXPECT().
+		WriteTo(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(p []byte, addr net.Addr) (n int, err error) {
+			time.Sleep(5 * time.Second)
+			return 0, nil
+		})
 
-		conn := dhcp.NewDualConn(local, remote, true, out, in, logger)
-		assert.NotNil(t, conn)
-		assert.Equal(t, conn.Local(), local)
-		assert.Equal(t, conn.Remote(), remote)
+	conn := dhcp.NewDualConn(local, remote, true, out, in, logger)
+	assert.NotNil(t, conn)
+	assert.Equal(t, conn.Local(), local)
+	assert.Equal(t, conn.Remote(), remote)
 
-		dhcp4 := getDHCP4()
+	dhcp4 := getDHCP4()
 
-		ctx, cancel := context.WithCancel(context.Background())
-		c1, c2 := conn.Send(ctx, dhcp4)
+	ctx, cancel := context.WithCancel(context.Background())
+	c1, c2 := conn.Send(ctx, dhcp4)
 
-		time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
-		cancel()
+	cancel()
 
-		select {
-		case <-c1:
-			t.Error("Error expected")
-		case err := <-c2:
-			assert.Error(t, err)
-			assert.EqualError(t, err, "context canceled")
-		case <-time.After(10 * time.Second):
-			t.Error("Unexpected timeout")
-		}
+	choice1(c1, c2, long, func(l int) {
+		t.Error("error expected")
+	}, func(err error) {
+		assert.Error(t, err)
+		assert.EqualError(t, err, "context canceled")
+	}, func() {
+		t.Error("Unexpected timeout")
+	})
 
-		err := conn.Close()
-		assert.NoError(t, err)
-	}
+	err := conn.Close()
+	assert.NoError(t, err)
 }
 
-func DualConnCancelReceiveContext() func(t *testing.T) {
-	return func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+func TestDualConnCancelReceiveContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-		local, remote := getTestAddr()
+	local, remote := getTestAddr()
 
-		out := mock.NewMockPacketConn(ctrl)
-		in := mock.NewMockUDPPacketConn(ctrl)
+	out := mock.NewMockPacketConn(ctrl)
+	in := mock.NewMockUDPPacketConn(ctrl)
 
-		logger := mock.NewTestLogger()
-		defer logger.Assert(t, 0, 0, 0, 4, 1, 0)
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0)
 
-		out.EXPECT().
-			LocalAddr().
-			Return(local).AnyTimes()
+	out.EXPECT().
+		LocalAddr().
+		Return(local).AnyTimes()
 
-		out.EXPECT().
-			Close().
-			Return(nil)
+	out.EXPECT().
+		Close().
+		Return(nil)
 
-		in.EXPECT().
-			Close().
-			Return(nil)
+	in.EXPECT().
+		Close().
+		Return(nil)
 
-		in.EXPECT().
-			SetReadDeadline(gomock.Any()).
-			DoAndReturn(func(t time.Time) error {
-				fmt.Printf("set deadline %v\n", t)
-				return nil
-			}).
-			Times(2)
+	in.EXPECT().
+		SetReadDeadline(gomock.Any()).
+		DoAndReturn(func(t time.Time) error {
+			fmt.Printf("set deadline %v\n", t)
+			return nil
+		}).
+		Times(2)
 
-		in.EXPECT().ReadFromUDP(gomock.Any()).
-			DoAndReturn(func(p []byte) (int, *net.UDPAddr, error) {
-				time.Sleep(5 * time.Second)
-				return 0, nil, nil
-			})
+	in.EXPECT().ReadFromUDP(gomock.Any()).
+		DoAndReturn(func(p []byte) (int, *net.UDPAddr, error) {
+			time.Sleep(30 * time.Second)
+			return 0, nil, nil
+		})
 
-		conn := dhcp.NewDualConn(local, remote, true, out, in, logger)
-		assert.NotNil(t, conn)
-		assert.Equal(t, conn.Local(), local)
-		assert.Equal(t, conn.Remote(), remote)
+	conn := dhcp.NewDualConn(local, remote, true, out, in, logger)
+	assert.NotNil(t, conn)
+	assert.Equal(t, conn.Local(), local)
+	assert.Equal(t, conn.Remote(), remote)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		c1, c2 := conn.Receive(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
+	c1, c2 := conn.Receive(ctx)
 
-		time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
-		cancel()
+	cancel()
 
-		select {
-		case <-c1:
-			t.Error("Error expected")
-		case err := <-c2:
-			assert.Error(t, err)
-			assert.EqualError(t, err, "context canceled")
-		case <-time.After(10 * time.Second):
-			t.Error("Unexpected timeout")
-		}
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
+		t.Error("error expected")
+	}, func(err error) {
+		assert.Error(t, err)
+		assert.EqualError(t, err, "context canceled")
+	}, func() {
+		t.Error("Unexpected timeout")
+	})
 
-		err := conn.Close()
-		assert.NoError(t, err)
-	}
+	err := conn.Close()
+	assert.NoError(t, err)
 }

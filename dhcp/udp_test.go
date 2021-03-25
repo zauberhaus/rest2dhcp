@@ -31,6 +31,8 @@ import (
 	"github.com/zauberhaus/rest2dhcp/mock"
 )
 
+var long = 30 * time.Second
+
 func TestUDPConn(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -88,7 +90,7 @@ func TestUDPConn(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, dhcp4)
 
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		assert.Equal(t, l, 301)
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -97,7 +99,7 @@ func TestUDPConn(t *testing.T) {
 	})
 
 	c3, c2 := conn.Receive(ctx)
-	choice2(c3, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c3, c2, long, func(dhcp *dhcp.DHCP4) {
 		var v1 = *dhcp
 		var v2 = *(dhcp4)
 		assert.EqualValues(t, v1.DHCPv4.Payload, v2.DHCPv4.Payload)
@@ -153,7 +155,7 @@ func TestUDPConnReadInvalidBlock(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(d *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(d *dhcp.DHCP4) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -206,7 +208,7 @@ func TestUDPConnReadFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(d *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(d *dhcp.DHCP4) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -263,7 +265,7 @@ func TestUDPConnWriteFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, dhcp4)
 
-	choice1(c1, c2, 10*time.Second, func(d int) {
+	choice1(c1, c2, long, func(d int) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -314,7 +316,7 @@ func TestUDPConnSendSetDeadlineFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, dhcp4)
 
-	choice1(c1, c2, 10*time.Second, func(d int) {
+	choice1(c1, c2, long, func(d int) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -363,7 +365,7 @@ func TestUDPConnReceiveSetDeadlineFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(d *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(d *dhcp.DHCP4) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -430,7 +432,7 @@ func TestUDPConnBlock(t *testing.T) {
 
 	cancel()
 
-	choice1(c1, c2, 10*time.Second, func(d int) {
+	choice1(c1, c2, long, func(d int) {
 	}, func(err error) {
 		assert.NoError(t, err)
 		t.Error(err)
@@ -493,7 +495,7 @@ func TestUDPConnCancelSendContext(t *testing.T) {
 
 	cancel()
 
-	choice1(c1, c2, 10*time.Second, func(d int) {
+	choice1(c1, c2, long, func(d int) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -554,7 +556,7 @@ func TestUDPConnCancelReceiveContext(t *testing.T) {
 
 	cancel()
 
-	choice2(c1, c2, 10*time.Second, func(d *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(d *dhcp.DHCP4) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)

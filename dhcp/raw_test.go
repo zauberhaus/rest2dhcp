@@ -92,7 +92,7 @@ func TestRawConn(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
 
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		assert.Equal(t, l, 252)
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -102,7 +102,7 @@ func TestRawConn(t *testing.T) {
 
 	c3, c2 := conn.Receive(ctx)
 
-	choice2(c3, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c3, c2, long, func(dhcp *dhcp.DHCP4) {
 		var v1 = *dhcp
 		var v2 = *(lease.DHCP4)
 		assert.EqualValues(t, v1.DHCPv4.Payload, v2.DHCPv4.Payload)
@@ -155,7 +155,7 @@ func TestRawConnReadInvalidUDPBlock(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -217,7 +217,7 @@ func TestRawConnReadInvalidDHCPBlock(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -266,7 +266,7 @@ func TestRawConnReadFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -317,7 +317,7 @@ func TestRawConnWriteFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
 
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -362,7 +362,7 @@ func TestRawConnSendSetDeadlineFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Send(ctx, lease.DHCP4)
 
-	choice1(c1, c2, 10*time.Second, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -406,7 +406,7 @@ func TestRawConnReceiveSetDeadlineFail(t *testing.T) {
 	ctx := context.Background()
 	c1, c2 := conn.Receive(ctx)
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -461,7 +461,7 @@ func TestRawConnBlock(t *testing.T) {
 	ctx2 := context.Background()
 	c1, c2 := conn.Send(ctx2, dhcp4)
 
-	choice1(c1, c2, 100*time.Millisecond, func(l int) {
+	choice1(c1, c2, 200*time.Millisecond, func(l int) {
 		t.Error("timeout expected")
 	}, func(err error) {
 		assert.NoError(t, err)
@@ -470,7 +470,7 @@ func TestRawConnBlock(t *testing.T) {
 
 	cancel()
 
-	choice1(c1, c2, 100*time.Millisecond, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 	}, func(err error) {
 		assert.NoError(t, err)
 	}, func() {
@@ -526,7 +526,7 @@ func TestRawConnCancelSendContext(t *testing.T) {
 
 	cancel()
 
-	choice1(c1, c2, 100*time.Millisecond, func(l int) {
+	choice1(c1, c2, long, func(l int) {
 		t.Error("Error expected")
 	}, func(err error) {
 		assert.Error(t, err)
@@ -581,7 +581,7 @@ func TestRawConnCancelReceiveContext(t *testing.T) {
 
 	cancel()
 
-	choice2(c1, c2, 10*time.Second, func(dhcp *dhcp.DHCP4) {
+	choice2(c1, c2, long, func(dhcp *dhcp.DHCP4) {
 		t.Error("error expected")
 	}, func(err error) {
 		assert.Error(t, err)
