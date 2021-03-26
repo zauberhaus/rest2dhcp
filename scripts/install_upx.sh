@@ -7,7 +7,7 @@ case `arch` in
         ARCH=amd64
         ;;
     aarch64)
-        ARCH=arm64
+        #ARCH=arm64
         break
         ;;
     ppc64le)
@@ -20,11 +20,18 @@ case `arch` in
         ;;
     *)
         echo "Unknown platform: `arch`"
-        exit 1
         ;;
 esac
 
-wget https://github.com/upx/upx/releases/download/v${VERSION}/upx-${VERSION}-${ARCH}_linux.tar.xz
-tar xJf upx-${VERSION}-${ARCH}_linux.tar.xz
-cp upx-${VERSION}-${ARCH}_linux/upx /usr/local/bin/upx
-rm -rf upx-${VERSION}-${ARCH}_linux*
+if [ ! -z "$ARCH" ] ; then
+    wget https://github.com/upx/upx/releases/download/v${VERSION}/upx-${VERSION}-${ARCH}_linux.tar.xz
+    tar xJf upx-${VERSION}-${ARCH}_linux.tar.xz
+    cp upx-${VERSION}-${ARCH}_linux/upx /usr/local/bin/upx
+    rm -rf upx-${VERSION}-${ARCH}_linux*
+else
+    cat >/usr/local/bin/upx <<EOL
+#!/bin/sh
+echo echo "Unsupported compression platform: `arch`"
+EOL
+    chmod +x /usr/local/bin/upx 
+fi
