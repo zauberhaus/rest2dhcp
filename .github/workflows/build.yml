@@ -12,7 +12,7 @@ jobs:
   release_test:
     strategy:
       matrix:
-        go-version: [1.16.x]
+        goversion: ['1.16']
         platform: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -20,7 +20,7 @@ jobs:
       if: success()
       uses: actions/setup-go@v2
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version: ${{ matrix.goversion }}
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Run tests 
@@ -28,23 +28,11 @@ jobs:
         go get github.com/mjibson/esc
         go get github.com/jandelgado/gcov2lcov
         go generate ./service/server.go
-        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background
-        go test -v -covermode=count -coverprofile=coverage.out ./...
-    - name: Convert coverage.out to coverage.lcov
-      if: success() && matrix.platform == 'ubuntu-latest'
-      run: |
-        gcov2lcov -infile coverage.out -outfile /tmp/coverage.lcov
-    - name: Coveralls
-      if: success() && matrix.platform == 'ubuntu-latest'
-      uses: coverallsapp/github-action@v1.1.2
-      with:
-          github-token: ${{ secrets.github_token }}
-          path-to-lcov: /tmp/coverage.lcov
-
+        go test -v -race ./...
+        
   build:
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    needs: release_test
     steps:
     - name: Check out code
       uses: actions/checkout@v2
@@ -54,11 +42,14 @@ jobs:
       id: prepare
       run: |
         echo ::set-output name=version::${GITHUB_REF#refs/*/}
-        # echo ::set-output name=version::${VERSION}
-        echo ::set-output name=docker_platforms::linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+        echo ::set-output name=docker_platforms::linux/amd64,linux/arm/v7,linux/arm64,linux/386,linux/ppc64le
         echo ::set-output name=docker_image::docker.io/${{ secrets.DOCKER_USERNAME }}/rest2dhcp
         echo ::set-output name=hash::${GITHUB_SHA}
-        echo ::set-output name=pre-release::false
+        if echo "${GITHUB_REF#refs/*/}" | egrep "^v[1-9][0-9]*\.[0-9]+\.[0-9]+$" > /dev/null ; then
+          echo ::set-output name=pre-release::false
+        else
+          echo ::set-output name=prerelease::true
+        fi
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v1
@@ -80,7 +71,7 @@ jobs:
         docker buildx build \
           --output type=image,name=${{ steps.prepare.outputs.docker_image }},push=true \
           --platform ${{ steps.prepare.outputs.docker_platforms }} \
-          --tag "${{ steps.prepare.outputs.docker_image }}:$$VERSION" \
+          --tag "${{ steps.prepare.outputs.docker_image }}:$VERSION" \
           --tag "${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.hash }}" \
           --tag "${{ steps.prepare.outputs.docker_image }}:latest" \
           --build-arg TAG="$V" \
