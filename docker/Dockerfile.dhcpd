@@ -8,6 +8,6 @@ ENV ROUTER=
 ENV DOMAIN=
 
 RUN touch /var/lib/dhcp/dhcpd.leases
-COPY entrypoint.sh /entrypoint.sh
+COPY ./entrypoint.sh /entrypoint.sh
 
 ENTRYPOINT [ "/entrypoint.sh" ]    

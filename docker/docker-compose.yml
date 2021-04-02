@@ -1,4 +1,4 @@
-version: "2"
+version: "3"
 services:
   dhcpd:
     image: dhcpd
@@ -25,7 +25,8 @@ services:
       dockerfile: ./Dockerfile.alpine
     environment:
       - VERBOSE=true
-      - DHCP_SERVER=dnsmasq
+      - DHCP_SERVER=dhcpd
+      - BASE_URL=localhost:8080
       - MODE=udp
     ports:
       - 8080:8080
@@ -34,14 +35,26 @@ services:
       - dnsmasq  
     depends_on:
       - dnsmasq        
+      - dhcpd
     networks:
       - dhcp      
       
+  test:
+    image: rest2dhcp_test
+    build: 
+      context: .
+      dockerfile: ./Dockerfile
+    links:
+      - rest2dhcp
+    depends_on:
+      - rest2dhcp        
+    networks:
+      - dhcp      
+
 networks:
   dhcp:     
     driver: bridge
     ipam:
       driver: default
       config:
-        - subnet: 172.100.0.0/24
-          gateway: 172.100.0.1
+        - subnet: 172.100.0.0/16

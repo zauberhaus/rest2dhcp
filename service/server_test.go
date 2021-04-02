@@ -305,12 +305,12 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	<-server.Done()
 }
 
-func TestServer_Version(t *testing.T) {
+func TestServer_Requests(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 7)
+	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 9)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -319,7 +319,7 @@ func TestServer_Version(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		follow     bool
@@ -339,6 +339,18 @@ func TestServer_Version(t *testing.T) {
 			method:     "GET",
 			url:        getRequestUrl(server, "/api"),
 			statuscode: http.StatusFound,
+		},
+		{
+			name:       "Call api",
+			method:     "GET",
+			url:        getRequestUrl(server, "/"),
+			statuscode: http.StatusFound,
+		},
+		{
+			name:       "Call swagger file",
+			method:     "GET",
+			url:        getRequestUrl(server, "/api/swagger.yaml"),
+			statuscode: http.StatusOK,
 		},
 		{
 			name:       "Call doc",
@@ -384,7 +396,7 @@ func TestServer_Version(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header, tt.follow)
@@ -434,7 +446,7 @@ func TestServer_GetLease(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -527,7 +539,7 @@ func TestServer_GetLease(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)
@@ -574,7 +586,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -604,7 +616,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)
@@ -651,7 +663,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -689,7 +701,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)
@@ -736,7 +748,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -774,7 +786,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)
@@ -821,7 +833,7 @@ func TestServer_Renew_(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -894,7 +906,7 @@ func TestServer_Renew_(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)
@@ -941,7 +953,7 @@ func TestServer_Release(t *testing.T) {
 		url        string
 		header     map[string]string
 		statuscode int
-		content    string
+		content    client.ContentType
 		result     string
 		body       string
 		do         interface{}
@@ -983,7 +995,7 @@ func TestServer_Release(t *testing.T) {
 					tt.header = make(map[string]string, 1)
 				}
 
-				tt.header["Accept"] = tt.content
+				tt.header["Accept"] = string(tt.content)
 			}
 
 			response := request(t, tt.method, tt.url, tt.header)

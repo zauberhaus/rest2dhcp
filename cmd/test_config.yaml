@@ -9,6 +9,7 @@ quiet: true
 verbose: true
 access-log: false
 hostname: "test"
+base-url: "http://base.nz"
 port: 1234
 kubeconfig: abcdefg
 namespace: ns001

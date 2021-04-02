@@ -21,13 +21,13 @@ func (s *RestServer) ContentMiddleware(next http.Handler) http.Handler {
 
 		content := r.Header.Get("Accept")
 
-		if strings.Contains(content, client.JSON) {
+		if strings.Contains(content, string(client.JSON)) {
 			ctx := context.WithValue(r.Context(), Content, client.JSON)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, client.YAML) {
+		} else if strings.Contains(content, string(client.YAML)) {
 			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, client.XML) {
+		} else if strings.Contains(content, string(client.XML)) {
 			ctx := context.WithValue(r.Context(), Content, client.XML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else if content == "" || content == "*/*" {
