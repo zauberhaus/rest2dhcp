@@ -1,0 +1,107 @@
+version: "3"
+services:
+  dhcpd:
+    image: dhcpd
+    build: 
+      context: .
+      dockerfile: ./Dockerfile.dhcpd
+    networks:
+      - dhcp      
+
+  dnsmasq:
+    image: dnsmasq
+    build: 
+      context: .
+      dockerfile: ./Dockerfile.dnsmasq
+    cap_add:
+      - NET_ADMIN      
+    networks:
+      - dhcp      
+
+  udhcpd:
+    image: udhcpd
+    build: 
+      context: .
+      dockerfile: ./Dockerfile.udhcpd
+    cap_add:
+      - NET_ADMIN      
+    networks:
+      - dhcp      
+    
+  rest2dhcp-dhcpd:
+    image: rest2dhcp
+    build: 
+      context: ..
+      dockerfile: ./Dockerfile.alpine
+    environment:
+      - VERBOSE=true
+      - DHCP_SERVER=dhcpd
+      - BASE_URL=localhost:8080
+      - MODE=udp
+    ports:
+      - 8080:8080
+    links:
+      - dhcpd
+    depends_on:
+      - dhcpd
+    networks:
+      - dhcp      
+
+  rest2dhcp-dnsmasq:
+    image: rest2dhcp
+    build: 
+      context: ..
+      dockerfile: ./Dockerfile.alpine
+    environment:
+      - VERBOSE=true
+      - DHCP_SERVER=dnsmasq
+      - BASE_URL=localhost:8081
+      - MODE=udp
+    ports:
+      - 8081:8080
+    links:
+      - dnsmasq  
+    depends_on:
+      - dnsmasq        
+    networks:
+      - dhcp      
+
+  rest2dhcp-udhcpd:
+    image: rest2dhcp
+    build: 
+      context: ..
+      dockerfile: ./Dockerfile.alpine
+    environment:
+      - VERBOSE=true
+      - DHCP_SERVER=udhcpd
+      - BASE_URL=localhost:8082
+      - MODE=udp
+    ports:
+      - 8082:8080
+    links:
+      - udhcpd
+    depends_on:
+      - udhcpd
+    networks:
+      - dhcp      
+         
+
+  # test:
+  #   image: rest2dhcp_test
+  #   build: 
+  #     context: .
+  #     dockerfile: ./Dockerfile
+  #   links:
+  #     - rest2dhcp
+  #   depends_on:
+  #     - rest2dhcp        
+  #   networks:
+  #     - dhcp      
+
+networks:
+  dhcp:     
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.100.0.0/24

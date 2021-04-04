@@ -1,0 +1,7 @@
+FROM alpine
+
+RUN apk update && apk add busybox-extras
+
+COPY ./entrypoint_udhcpd.sh /entrypoint.sh
+
+ENTRYPOINT [ "/entrypoint.sh" ]    

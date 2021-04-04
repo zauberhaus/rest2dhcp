@@ -310,7 +310,7 @@ func TestServer_Requests(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 9)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 9)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -361,8 +361,8 @@ func TestServer_Requests(t *testing.T) {
 		{
 			name:       "Call doc",
 			method:     "GET",
-			url:        getRequestUrl(server, "/doc/", "localhost"),
-			statuscode: http.StatusFound,
+			url:        getRequestUrl(server, "/doc/"),
+			statuscode: http.StatusOK,
 		},
 		{
 			name:       "GetVersion_json",
