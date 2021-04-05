@@ -6,6 +6,6 @@ fi
 
 docker-compose up -d
 
-PORTS="8080,8081,8082" ginkgo
+PORTS="8080,8081,8082" ginkgo --tags=integration
 
 docker-compose down
