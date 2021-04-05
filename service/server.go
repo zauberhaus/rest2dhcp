@@ -148,6 +148,10 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		s.hostname = hostname
 	}
 
+	if config.BaseURL == "" {
+		config.BaseURL = fmt.Sprintf("http://%v:%v", s.hostname, s.port)
+	}
+
 	s.port = config.Port
 	s.config = config
 	s.Addr = fmt.Sprintf("%v:%v", config.Hostname, config.Port)
@@ -216,10 +220,16 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		if err == nil {
 			old := string(data)
 			new := strings.Replace(old, "version: \"1.0.0\"", "version: \""+version.GitVersion+"\"", 1)
-			new2 := strings.Replace(new, "host: \"localhost:8080\"", fmt.Sprintf("host: \"%v:%v\"", s.hostname, s.port), 1)
-			if old != new2 {
-				file.size = int64(len(new2))
-				file.compressed = encode([]byte(new2))
+
+			if s.config.BaseURL != "" {
+				new = strings.Replace(new, "host: \"localhost:8080\"", fmt.Sprintf("host: \"%v\"", s.config.BaseURL), 1)
+			} else {
+				new = strings.Replace(new, "host: \"localhost:8080\"", fmt.Sprintf("host: \"%v:%v\"", s.hostname, s.port), 1)
+			}
+
+			if old != new {
+				file.size = int64(len(new))
+				file.compressed = encode([]byte(new))
 			}
 		}
 	}
@@ -245,14 +255,14 @@ func (s *RestServer) Start(ctx context.Context) chan bool {
 
 		go func() {
 			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				s.logger.Fatalf("Error listen: %s\n", err)
+				s.logger.Fatalf("Error listen: %s", err)
 			}
 		}()
 
 		go func() {
 			for {
 				time.Sleep(10 * time.Millisecond)
-				_, err := http.Get(fmt.Sprintf("http://%v:%v", s.hostname, s.port))
+				_, err := http.Get(fmt.Sprintf("http://%v:%v/health", s.hostname, s.port))
 				if err == nil {
 					s.logger.Info("Server listen on ", s.Addr)
 					close(rc)
@@ -284,33 +294,24 @@ func (s *RestServer) Done() chan bool {
 }
 
 func (s *RestServer) setup(router *mux.Router) {
-	if s.hostname != "localhost" {
-		router.
-			Host("localhost").
-			Methods("GET").
-			PathPrefix("/doc/").
-			HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-				http.Redirect(res, req, fmt.Sprintf("http://%s:%v/%s", s.hostname, s.port, req.URL), http.StatusFound)
-			})
+	router.
+		Name("/swagger.yaml").
+		Methods("GET").
+		Path("/api/swagger.yaml").
+		Handler(http.FileServer(FS(false)))
 
-		router.
-			Name("/api").
-			Methods("GET").
-			PathPrefix("/api").
-			HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-				if s.port != 80 {
-					http.Redirect(res, req, fmt.Sprintf("http://%s:%v/doc/", s.hostname, s.port), http.StatusFound)
-				} else {
-					http.Redirect(res, req, fmt.Sprintf("http://%s:%v/doc/", s.hostname, s.port), http.StatusFound)
-				}
-			})
-	} else {
-		router.
-			Name("/api").
-			Methods("GET").
-			PathPrefix("/api").
-			Handler(RedirectHandler("/doc/", http.StatusTemporaryRedirect))
-	}
+	router.
+		Name("/api").
+		Methods("GET").
+		Path("/api").
+		HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			if strings.HasPrefix(req.RequestURI, s.config.BaseURL) {
+				http.Redirect(res, req, "/doc/", http.StatusFound)
+			} else {
+				s.logger.Infof("Redirect to %v", fmt.Sprintf("%s/doc/", s.config.BaseURL))
+				http.Redirect(res, req, fmt.Sprintf("%s/doc/", s.config.BaseURL), http.StatusFound)
+			}
+		})
 
 	router.
 		Name("version").
@@ -323,12 +324,6 @@ func (s *RestServer) setup(router *mux.Router) {
 		Methods("GET").
 		Path("/metrics").
 		Handler(promhttp.Handler())
-
-	router.
-		Name("/swagger.yaml").
-		Methods("GET").
-		Path("/api/swagger.yaml").
-		Handler(http.FileServer(FS(false)))
 
 	router.
 		Name("/doc").
@@ -359,10 +354,17 @@ func (s *RestServer) setup(router *mux.Router) {
 			Path(p).
 			HandlerFunc(s.lease)
 	}
+
+	router.
+		Name("/").
+		Methods("GET").
+		Path("/").
+		Handler(RedirectHandler("/doc/", http.StatusFound))
+
 }
 
 func (s *RestServer) version(w http.ResponseWriter, r *http.Request) {
-	contentType := client.ContentType(r.Context().Value(Content).(string))
+	contentType := r.Context().Value(Content).(client.ContentType)
 
 	s.write(w, s.info, contentType)
 }
@@ -398,7 +400,7 @@ func (s *RestServer) lease(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := NewLease(query.Hostname, *lease)
-	contentType := client.ContentType(r.Context().Value(Content).(string))
+	contentType := r.Context().Value(Content).(client.ContentType)
 
 	s.write(w, result, contentType)
 }
@@ -433,7 +435,7 @@ func (s *RestServer) renew(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := NewLease(query.Hostname, *lease)
-	contentType := client.ContentType(r.Context().Value(Content).(string))
+	contentType := r.Context().Value(Content).(client.ContentType)
 	s.write(w, result, contentType)
 }
 
@@ -466,7 +468,7 @@ func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.Co
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", client.JSON)
+		w.Header().Set("Content-Type", string(client.JSON))
 		_, err = w.Write(data)
 		return err
 	case client.XML:
@@ -476,7 +478,7 @@ func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.Co
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", client.XML)
+		w.Header().Set("Content-Type", string(client.XML))
 		_, err = w.Write(data)
 		return err
 	case client.YAML:
@@ -485,12 +487,12 @@ func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.Co
 			return err
 		}
 
-		w.Header().Set("Content-Type", client.YAML)
+		w.Header().Set("Content-Type", string(client.YAML))
 		_, err = w.Write(data)
 		return err
 	}
 
-	return fmt.Errorf("Unknown content format: %v", t)
+	return fmt.Errorf("unknown content format: %v", t)
 }
 
 func (s *RestServer) getKubeClient(kubeconfig string, logger logger.Logger) (kubernetes.KubeClient, error) {

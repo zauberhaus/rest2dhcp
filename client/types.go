@@ -35,19 +35,19 @@ type ContentType string
 // ContentType values
 const (
 	Unknown ContentType = "text/html"
-	JSON                = "application/json"
-	YAML                = "application/yaml"
-	XML                 = "application/xml"
+	JSON    ContentType = "application/json"
+	YAML    ContentType = "application/yaml"
+	XML     ContentType = "application/xml"
 )
 
 // Parse the content type from string
 func (t *ContentType) Parse(val string) {
 	switch val {
-	case JSON:
+	case string(JSON):
 		*t = JSON
-	case YAML:
+	case string(YAML):
 		*t = YAML
-	case XML:
+	case string(XML):
 		*t = XML
 	default:
 		*t = Unknown

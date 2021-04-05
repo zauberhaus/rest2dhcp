@@ -31,8 +31,8 @@ jobs:
         go get github.com/mjibson/esc
         go get github.com/jandelgado/gcov2lcov
         go generate ./service/server.go
-        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background
-        go test -v -covermode=count -coverprofile=coverage.out ./...
+        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background ./kubernetes 
+        go test -v -covermode=count -coverprofile=coverage.out ./client ./dhcp ./cmd ./service ./background ./kubernetes
     - name: Convert coverage.out to coverage.lcov
       if: success() && matrix.platform == 'ubuntu-latest'
       run: |
@@ -44,3 +44,22 @@ jobs:
           github-token: ${{ secrets.github_token }}
           path-to-lcov: /tmp/coverage.lcov
 
+  integration-test:
+    strategy:
+      matrix:
+        goversion: ['1.16']
+        platform: [ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Install Go
+      if: success()
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.goversion }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Integration tests 
+      run: |
+        go install github.com/onsi/ginkgo/ginkgo
+        cd tests && \
+        ./run.sh

@@ -73,6 +73,10 @@ func (c *Client) Lease(ctx context.Context, hostname string, mac MAC) (*Lease, e
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+
 		return nil, NewError(resp.StatusCode, string(data))
 	}
 
@@ -126,6 +130,10 @@ func (c *Client) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+
 		return nil, NewError(resp.StatusCode, string(data))
 	}
 
@@ -171,6 +179,10 @@ func (c *Client) Release(ctx context.Context, hostname string, mac MAC, ip net.I
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+
 		return NewError(resp.StatusCode, string(data))
 	}
 
@@ -197,6 +209,10 @@ func (c *Client) Version(ctx context.Context) (*Version, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+
 		return nil, NewError(resp.StatusCode, string(data))
 	}
 
@@ -257,7 +273,7 @@ func (c *Client) unmarshal(data []byte, result interface{}, mime ContentType) er
 			return err
 		}
 	default:
-		return fmt.Errorf("Unexpected content type")
+		return fmt.Errorf("unexpected content type")
 	}
 
 	return nil

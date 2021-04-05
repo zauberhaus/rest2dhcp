@@ -38,8 +38,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:generate mockgen -source ../background/server.go  -package mock -destination ../mock/server.go
-
 type Check func(cmd *cmd.RootCommand, config *service.ServerConfig)
 
 func TestEnv(t *testing.T) {
@@ -95,6 +93,7 @@ func TestEnvVariable(t *testing.T) {
 	os.Setenv("RELAY", relay.String())
 	os.Setenv("QUIET", "1")
 	os.Setenv("VERBOSE", "1")
+	os.Setenv("BASE_URL", "http://wise1.nz")
 	os.Setenv("HOSTNAME", "test")
 	os.Setenv("PORT", "1234")
 	os.Setenv("KUBECONFIG", "abcdefg")
@@ -114,6 +113,7 @@ func TestEnvVariable(t *testing.T) {
 		assert.Equal(t, relay, config.Relay.To4(), "Relay wrong")
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
+		assert.Equal(t, "http://wise1.nz", config.BaseURL, "BaseURL wrong")
 		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
 		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")
@@ -134,6 +134,9 @@ func TestEnvVariable(t *testing.T) {
 	os.Unsetenv("QUIET")
 	os.Unsetenv("VERBOSE")
 	os.Unsetenv("LISTEN")
+	os.Unsetenv("BASE_URL")
+	os.Unsetenv("HOSTNAME")
+	os.Unsetenv("PORT")
 	os.Unsetenv("KUBECONFIG")
 	os.Unsetenv("NAMESPACE")
 	os.Unsetenv("SERVICE")
@@ -170,6 +173,7 @@ func TestConfigVariable(t *testing.T) {
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
 		assert.Equal(t, false, config.AccessLog, "Access log wrong")
+		assert.Equal(t, "http://wise.nz", config.BaseURL, "BaseURL wrong")
 		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
 		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")
@@ -187,6 +191,7 @@ func TestConfigVariable(t *testing.T) {
 		"-q",
 		"-v",
 		"--access-log=false",
+		"--base-url=http://wise.nz",
 		"-H", "test",
 		"-p", "1234",
 		"--kubeconfig", "abcdefg",
@@ -223,6 +228,7 @@ func TestConfigFile(t *testing.T) {
 		assert.Equal(t, true, config.Quiet, "Quiet wrong")
 		assert.Equal(t, true, config.Verbose, "Verbose wrong")
 		assert.Equal(t, false, config.AccessLog, "Access log wrong")
+		assert.Equal(t, "http://base.nz", config.BaseURL, "BaseURL wrong")
 		assert.Equal(t, "test", config.Hostname, "Hostname wrong")
 		assert.Equal(t, uint16(1234), config.Port, "Port wrong")
 		assert.Equal(t, "abcdefg", config.KubeConfig.Config, "Kube config wrong")

@@ -2,6 +2,6 @@ FROM alpine
 
 RUN apk add dnsmasq
 
-COPY entrypoint2.sh /entrypoint.sh
+COPY entrypoint_dnsmasq.sh /entrypoint.sh
 
 ENTRYPOINT [ "/entrypoint.sh" ]    

@@ -422,6 +422,12 @@ func TestClient_Release_InvalidParameter(t *testing.T) {
 			hostname: "hostname",
 			mac:      client.MAC{1, 2, 3, 4, 5, 6},
 		},
+		{
+			name:     "Invalid URL",
+			hostname: "hostname",
+			mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			ip:       net.IP{1, 2, 3, 4},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -432,6 +438,52 @@ func TestClient_Release_InvalidParameter(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestClient_Release_Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 1)
+	server, dhcpClient, cancel := start(t, ctrl, logger)
+
+	tests := []struct {
+		name     string
+		hostname string
+		mac      client.MAC
+		ip       net.IP
+		err      error
+	}{
+		{
+			name:     "Invalid URL",
+			hostname: "hostname",
+			mac:      client.MAC{1, 2, 3, 4, 5, 6},
+			ip:       net.IP{1, 2, 3, 4},
+			err:      fmt.Errorf("release error"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dhcpClient.EXPECT().
+				Release(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
+					rc := make(chan error, 1)
+					rc <- tt.err
+					return rc
+				})
+
+			c := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
+			ctx := context.Background()
+
+			err := c.Release(ctx, tt.hostname, tt.mac, tt.ip)
+			assert.Error(t, err)
+			assert.EqualError(t, err, fmt.Sprintf("(400 Bad Request) %v", tt.err))
+		})
+	}
+
+	cancel()
+	<-server.Done()
 }
 
 func TestClientInvalidLease(t *testing.T) {
