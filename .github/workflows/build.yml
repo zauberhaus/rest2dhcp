@@ -105,6 +105,8 @@ jobs:
 
     - name: Build darwin executable  
       run: |
+        go get github.com/mjibson/esc
+        go generate ./service/server.go
         GOARCH=amd64 GOOS=darwin go build -o build2/rest2dhcp-darwin-amd64
         GOARCH=arm64 GOOS=darwin go build -o build2/rest2dhcp-darwin-arm64
 
