@@ -3,7 +3,7 @@
 if test -z $1 ; then
     TAG="docker.io/zauberhaus/rest2dhcp:latest"
 else
-    TAG="$1"    
+    TAG="docker.io/zauberhaus/rest2dhcp:$1"    
 fi
 
 if docker buildx > /dev/null 2>&1 ; then
@@ -32,7 +32,9 @@ else
 
         NAME="$TAG@$HASH"
 
-        id=`docker create $NAME`
+        echo "$ARCH -> $NAME"
+
+        id=`docker create --platform $ARCH $NAME`
         docker cp $id:/rest2dhcp - > out.tar
         docker rm -v $id > /dev/null
         docker rmi $NAME
@@ -40,9 +42,11 @@ else
         tar xf out.tar && \
         rm out.tar
         if test -z "$VARIANT"; then 
+            echo "Copy rest2dhcp to rest2dhcp-$ARCH"
             mv rest2dhcp rest2dhcp-$ARCH
             FILES="$FILES rest2dhcp-$ARCH"
         else
+            echo "Copy rest2dhcp to rest2dhcp-$ARCH-$VARIANT"
             mv rest2dhcp rest2dhcp-$ARCH-$VARIANT
             FILES="$FILES rest2dhcp-$ARCH-$VARIANT"
         fi    
