@@ -53,6 +53,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [release_test, release_integration_test]
     steps:
+    - name: Install Go
+      if: success()
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+
     - name: Check out code
       uses: actions/checkout@v2
 
