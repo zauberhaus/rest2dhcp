@@ -103,6 +103,11 @@ jobs:
         ./scripts/extract.sh $VERSION && \
         ls ./build
 
+    - name: Build darwin executable  
+      run: |
+        GOARCH=amd64 GOOS=darwin go build -o build2/rest2dhcp-darwin-amd64
+        GOARCH=arm64 GOOS=darwin go build -o build2/rest2dhcp-darwin-arm64
+
     - name: Create Release
       if: success() && !contains(steps.prepare.outputs.version, 'master')
       id: create_release
@@ -115,17 +120,6 @@ jobs:
         draft: false
         prerelease: ${{ steps.prepare.outputs.prerelease }}
 
-    - name: Upload amd64
-      id: upload-release-asset-amd64 
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} 
-        asset_path: ./build/rest2dhcp-amd64
-        asset_name: rest2dhcp-linux-x86_64
-        asset_content_type: application/octet-stream
-
     - name: Upload 386
       id: upload-release-asset-386 
       uses: actions/upload-release-asset@v1
@@ -135,6 +129,17 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./build/rest2dhcp-386
         asset_name: rest2dhcp-linux-386
+        asset_content_type: application/octet-stream
+
+    - name: Upload amd64
+      id: upload-release-asset-amd64 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} 
+        asset_path: ./build/rest2dhcp-amd64
+        asset_name: rest2dhcp-linux-x86_64
         asset_content_type: application/octet-stream
 
     - name: Upload arm64
@@ -148,6 +153,17 @@ jobs:
         asset_name: rest2dhcp-linux-arm64
         asset_content_type: application/octet-stream
 
+    - name: Upload arm-v7
+      id: upload-release-asset-arm-v7
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/rest2dhcp-arm-v7
+        asset_name: rest2dhcp-linux-arm-v7
+        asset_content_type: application/octet-stream        
+
     - name: Upload ppc64le
       id: upload-release-asset-ppc64le
       uses: actions/upload-release-asset@v1
@@ -159,4 +175,24 @@ jobs:
         asset_name: rest2dhcp-linux-ppc64le
         asset_content_type: application/octet-stream        
 
+    - name: Upload darwin-amd64
+      id: upload-release-asset-darwin-amd64
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/rest2dhcp-darwin-amd64
+        asset_name: rest2dhcp-darwin-amd64
+        asset_content_type: application/octet-stream        
 
+    - name: Upload darwin-arm64
+      id: upload-release-asset-darwin-arm64
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/rest2dhcp-darwin-arm64
+        asset_name: rest2dhcp-darwin-arm64
+        asset_content_type: application/octet-stream        
