@@ -31,8 +31,8 @@ jobs:
         go get github.com/mjibson/esc
         go get github.com/jandelgado/gcov2lcov
         go generate ./service/server.go
-        go test -v -race -timeout=30s ./client ./dhcp ./cmd ./service ./background ./kubernetes 
-        go test -v -covermode=count -coverprofile=coverage.out ./client ./dhcp ./cmd ./service ./background ./kubernetes
+        go test -v -race -timeout=30s ./... 
+        go test -v -covermode=count -coverprofile=coverage.out ./...
     - name: Convert coverage.out to coverage.lcov
       if: success() && matrix.platform == 'ubuntu-latest'
       run: |
