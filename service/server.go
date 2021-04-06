@@ -92,6 +92,8 @@ type RestServer struct {
 	port     uint16
 	logger   logger.Logger
 
+	listenAll bool
+
 	clientset kube.Interface
 }
 
@@ -140,6 +142,7 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 	if config.Hostname != "" {
 		s.hostname = config.Hostname
 	} else {
+		s.listenAll = true
 		hostname, err := os.Hostname()
 		if err != nil {
 			s.logger.Errorf("Error get hostname: %v", err)
@@ -148,11 +151,12 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		s.hostname = hostname
 	}
 
+	s.port = config.Port
+
 	if config.BaseURL == "" {
 		config.BaseURL = fmt.Sprintf("http://%v:%v", s.hostname, s.port)
 	}
 
-	s.port = config.Port
 	s.config = config
 	s.Addr = fmt.Sprintf("%v:%v", config.Hostname, config.Port)
 
@@ -260,9 +264,16 @@ func (s *RestServer) Start(ctx context.Context) chan bool {
 		}()
 
 		go func() {
+			var url string
+			if s.listenAll {
+				url = fmt.Sprintf("http://localhost:%v/health", s.port)
+			} else {
+				url = fmt.Sprintf("http://%v:%v/health", s.hostname, s.port)
+			}
 			for {
 				time.Sleep(10 * time.Millisecond)
-				_, err := http.Get(fmt.Sprintf("http://%v:%v/health", s.hostname, s.port))
+
+				_, err := http.Get(url)
 				if err == nil {
 					s.logger.Info("Server listen on ", s.Addr)
 					close(rc)
