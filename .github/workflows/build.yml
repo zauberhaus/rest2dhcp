@@ -113,8 +113,8 @@ jobs:
       run: |
         go get github.com/mjibson/esc
         go generate ./service/server.go
-        GOARCH=amd64 GOOS=darwin go build -o build2/rest2dhcp-darwin-amd64
-        GOARCH=arm64 GOOS=darwin go build -o build2/rest2dhcp-darwin-arm64
+        GOARCH=amd64 GOOS=darwin go build -o build/rest2dhcp-darwin-amd64
+        GOARCH=arm64 GOOS=darwin go build -o build/rest2dhcp-darwin-arm64
 
     - name: Create Release
       if: success() && !contains(steps.prepare.outputs.version, 'master')
