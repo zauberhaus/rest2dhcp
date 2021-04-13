@@ -85,11 +85,11 @@ func TestClientVersion(t *testing.T) {
 		t.Run(tc.Mime.String(), func(t *testing.T) {
 
 			cl := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
-			cl.ContentType = tc.Mime
+			cl.SetContentType(tc.Mime)
 			ctx := context.Background()
 
 			version, err := cl.Version(ctx)
-			if cl.ContentType == client.Unknown {
+			if cl.GetContentType() == client.Unknown {
 				clientError, ok := err.(*client.Error)
 				if !ok {
 					t.Fatalf("Unexpected error type")
@@ -213,7 +213,7 @@ func TestClient(t *testing.T) {
 			}
 
 			cl := client.NewClient(fmt.Sprintf("%s:%v", host, server.Port()))
-			cl.ContentType = tc.Mime
+			cl.SetContentType(tc.Mime)
 
 			ctx := context.Background()
 
@@ -320,7 +320,7 @@ func TestClient_GetLease_Fail(t *testing.T) {
 			}
 
 			cl := client.NewClient(tc.Server)
-			cl.ContentType = tc.Mime
+			cl.SetContentType(tc.Mime)
 
 			ctx := context.Background()
 
