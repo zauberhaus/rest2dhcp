@@ -75,8 +75,48 @@ func TestEnvConfigFile(t *testing.T) {
 	configfile := "./test_config.yaml"
 	os.Setenv("CONFIG", configfile)
 	run(t, func(cmd *cmd.RootCommand, config *service.ServerConfig) {
+		assert.Equal(t, net.IP{11, 11, 11, 11}, config.Local.To4())
+		assert.Equal(t, net.IP{22, 22, 22, 22}, config.Remote.To4())
+		assert.Equal(t, net.IP{33, 33, 33, 33}, config.Relay.To4())
+		assert.Equal(t, dhcp.Broken, config.Mode)
+		assert.Equal(t, 13*time.Minute, config.Timeout)
+		assert.Equal(t, 27*time.Second, config.DHCPTimeout)
+		assert.Equal(t, 38000*time.Millisecond, config.Retry)
+		assert.Equal(t, true, config.Verbose)
+		assert.Equal(t, true, config.Quiet)
+		assert.Equal(t, false, config.AccessLog)
+		assert.Equal(t, "test", config.Hostname)
+		assert.Equal(t, "http://base.nz", config.BaseURL)
+		assert.Equal(t, uint16(1234), config.Port)
+		assert.Equal(t, "abcdefg", config.KubeConfig.Config)
+		assert.Equal(t, "ns001", config.KubeConfig.Namespace)
+		assert.Equal(t, "svr001", config.KubeConfig.Service)
 	})
 	os.Unsetenv("CONFIG")
+}
+
+func TestParamConfigFile(t *testing.T) {
+	configfile := "./test_config.yaml"
+	run(t, func(cmd *cmd.RootCommand, config *service.ServerConfig) {
+		assert.Equal(t, net.IP{11, 11, 11, 11}, config.Local.To4())
+		assert.Equal(t, net.IP{22, 22, 22, 22}, config.Remote.To4())
+		assert.Equal(t, net.IP{33, 33, 33, 33}, config.Relay.To4())
+		assert.Equal(t, dhcp.Broken, config.Mode)
+		assert.Equal(t, 13*time.Minute, config.Timeout)
+		assert.Equal(t, 27*time.Second, config.DHCPTimeout)
+		assert.Equal(t, 38000*time.Millisecond, config.Retry)
+		assert.Equal(t, true, config.Verbose)
+		assert.Equal(t, true, config.Quiet)
+		assert.Equal(t, false, config.AccessLog)
+		assert.Equal(t, "test", config.Hostname)
+		assert.Equal(t, "http://base.nz", config.BaseURL)
+		assert.Equal(t, uint16(1234), config.Port)
+		assert.Equal(t, "abcdefg", config.KubeConfig.Config)
+		assert.Equal(t, "ns001", config.KubeConfig.Namespace)
+		assert.Equal(t, "svr001", config.KubeConfig.Service)
+	},
+		"--config", configfile,
+	)
 }
 
 func TestEnvVariable(t *testing.T) {

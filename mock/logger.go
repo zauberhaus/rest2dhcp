@@ -31,35 +31,43 @@ func NewTestLogger() *Testlogger {
 
 func (l *Testlogger) Assert(t gomock.TestReporter, val ...int64) {
 	if len(val) > 0 && val[0] >= 0 {
-		assert.Equal(t, val[0], l.FatalCount, "Fatal count")
+		v := atomic.LoadInt64(&l.FatalCount)
+		assert.Equal(t, val[0], v, "Fatal count")
 	}
 
 	if len(val) > 1 && val[1] >= 0 {
-		assert.Equal(t, val[1], l.ErrorCount, "Error count")
+		v := atomic.LoadInt64(&l.ErrorCount)
+		assert.Equal(t, val[1], v, "Error count")
 	}
 
 	if len(val) > 2 && val[2] >= 0 {
-		assert.Equal(t, val[2], l.WarnCount, "Warn count")
+		v := atomic.LoadInt64(&l.WarnCount)
+		assert.Equal(t, val[2], v, "Warn count")
 	}
 
 	if len(val) > 3 && val[3] >= 0 {
-		assert.Equal(t, val[3], l.InfoCount, "Info count")
+		v := atomic.LoadInt64(&l.InfoCount)
+		assert.Equal(t, val[3], v, "Info count")
 	}
 
 	if len(val) > 4 && val[4] >= 0 {
-		assert.Equal(t, val[4], l.DebugCount, "Debug count")
+		v := atomic.LoadInt64(&l.DebugCount)
+		assert.Equal(t, val[4], v, "Debug count")
 	}
 
 	if len(val) > 5 && val[5] >= 0 {
-		assert.Equal(t, val[5], l.TraceCount, "Trace count")
+		v := atomic.LoadInt64(&l.TraceCount)
+		assert.Equal(t, val[5], v, "Trace count")
 	}
 
 	if len(val) > 6 && val[6] >= 0 {
-		assert.Equal(t, val[6], l.TestCount, "Test count")
+		v := atomic.LoadInt64(&l.TestCount)
+		assert.Equal(t, val[6], v, "Test count")
 	}
 
 	if len(val) > 7 && val[7] >= 0 {
-		assert.Equal(t, val[7], l.RequestCount, "Request count")
+		v := atomic.LoadInt64(&l.RequestCount)
+		assert.Equal(t, val[7], v, "Request count")
 	}
 }
 

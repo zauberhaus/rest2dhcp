@@ -66,7 +66,6 @@ var (
 
 // NewClient initialize a new client
 func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType ConnectionType, timeout time.Duration, retry time.Duration, logger logger.Logger) DHCPClient {
-	//ctx, cancel := context.WithCancel(context.Background())
 
 	if connResolver == nil {
 		connResolver = &DefaultConnectioneResolver{}
