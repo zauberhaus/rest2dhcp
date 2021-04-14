@@ -76,13 +76,6 @@ func NewKubeClient(kubeconfig string, logger logger.Logger) (KubeClient, error) 
 	}, nil
 }
 
-func NewTestKubeClient(client kubernetes.Interface, logger logger.Logger) (KubeClient, error) {
-	return &kubeClientImpl{
-		client: client,
-		logger: logger,
-	}, nil
-}
-
 func (k *kubeClientImpl) GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error) {
 	m, err := k.client.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

@@ -32,7 +32,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
-	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/logger"
@@ -659,7 +658,7 @@ func TestClientError(t *testing.T) {
 	assert.Equal(t, "(404 Not Found) not found", err.Error())
 }
 
-func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (background.Server, *mock.MockDHCPClient, context.CancelFunc) {
+func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (service.Server, *mock.MockDHCPClient, context.CancelFunc) {
 	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
 	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
@@ -699,14 +698,11 @@ func getVersion() *client.Version {
 	}
 }
 
-func setDHCPClient(server background.Server, c dhcp.DHCPClient) {
-	restServer, ok := server.(*service.RestServer)
-	if ok {
-		pointerVal := reflect.ValueOf(restServer)
-		val := reflect.Indirect(pointerVal)
-		member := val.FieldByName("client")
-		ptrToY := unsafe.Pointer(member.UnsafeAddr())
-		realPtrToY := (*dhcp.DHCPClient)(ptrToY)
-		*realPtrToY = c
-	}
+func setDHCPClient(server service.Server, c dhcp.DHCPClient) {
+	pointerVal := reflect.ValueOf(server)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("client")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*dhcp.DHCPClient)(ptrToY)
+	*realPtrToY = c
 }

@@ -41,14 +41,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/kubernetes"
 	"github.com/zauberhaus/rest2dhcp/logger"
 	"gopkg.in/yaml.v3"
-
-	kube "k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -81,10 +78,20 @@ var (
 	Version *client.Version
 )
 
-// RestServer provides the REST service
-type RestServer struct {
+type Server interface {
+	Init(ctx context.Context, args ...interface{})
+	Start(ctx context.Context) chan bool
+	Done() chan bool
+
+	Hostname() string
+	Port() uint16
+}
+
+// serverImpl provides the REST service
+type serverImpl struct {
 	http.Server
 	client   dhcp.DHCPClient
+	kube     kubernetes.KubeClient
 	done     chan bool
 	info     *client.Version
 	config   *ServerConfig
@@ -93,20 +100,18 @@ type RestServer struct {
 	logger   logger.Logger
 
 	listenAll bool
-
-	clientset kube.Interface
 }
 
 // NewServer creates a new Server object
-func NewServer(l logger.Logger) background.Server {
+func NewServer(l logger.Logger) Server {
 
-	return &RestServer{
+	return &serverImpl{
 		logger: l,
 		done:   make(chan bool),
 	}
 }
 
-func (s *RestServer) Init(ctx context.Context, args ...interface{}) {
+func (s *serverImpl) Init(ctx context.Context, args ...interface{}) {
 	var config *ServerConfig
 	var version *client.Version
 
@@ -128,7 +133,7 @@ func (s *RestServer) Init(ctx context.Context, args ...interface{}) {
 }
 
 // NewServer creates a new Server object
-func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *client.Version) {
+func (s *serverImpl) init(ctx context.Context, config *ServerConfig, version *client.Version) {
 
 	if config.Verbose {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -166,9 +171,17 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		client, err := s.getKubeClient(config.KubeConfig.Config, s.logger)
-		if err == nil {
-			resolver = dhcp.NewKubernetesExternalIPResolver(config.Local, config.Remote, config.KubeConfig, client, s.logger)
+		if s.kube == nil {
+			client, err := kubernetes.NewKubeClient(config.KubeConfig.Config, s.logger)
+			if err == nil {
+				s.kube = client
+			} else {
+				s.logger.Errorf("Kubernetes client configuration: %v", err)
+			}
+		}
+
+		if s.kube != nil {
+			resolver = dhcp.NewKubernetesExternalIPResolver(config.Local, config.Remote, config.KubeConfig, s.kube, s.logger)
 			extIP, err := resolver.GetRelayIP(ctx)
 			if err == nil {
 				config.Relay = extIP
@@ -181,7 +194,6 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 				}
 			}
 		} else {
-			s.logger.Errorf("Kubernetes client configuration: %v", err)
 			resolver = dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
 		}
 	} else {
@@ -241,17 +253,17 @@ func (s *RestServer) init(ctx context.Context, config *ServerConfig, version *cl
 	s.setup(router)
 }
 
-func (s *RestServer) Hostname() string {
+func (s *serverImpl) Hostname() string {
 	return s.hostname
 }
 
-func (s *RestServer) Port() uint16 {
+func (s *serverImpl) Port() uint16 {
 	return s.port
 }
 
 // Start starts the server
 // * @param ctx - context for a graceful shutdown
-func (s *RestServer) Start(ctx context.Context) chan bool {
+func (s *serverImpl) Start(ctx context.Context) chan bool {
 	rc := make(chan bool, 1)
 
 	go func() {
@@ -300,11 +312,11 @@ func (s *RestServer) Start(ctx context.Context) chan bool {
 	return rc
 }
 
-func (s *RestServer) Done() chan bool {
+func (s *serverImpl) Done() chan bool {
 	return s.done
 }
 
-func (s *RestServer) setup(router *mux.Router) {
+func (s *serverImpl) setup(router *mux.Router) {
 	router.
 		Name("/swagger.yaml").
 		Methods("GET").
@@ -374,13 +386,13 @@ func (s *RestServer) setup(router *mux.Router) {
 
 }
 
-func (s *RestServer) version(w http.ResponseWriter, r *http.Request) {
+func (s *serverImpl) version(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Context().Value(Content).(client.ContentType)
 
 	s.write(w, s.info, contentType)
 }
 
-func (s *RestServer) lease(w http.ResponseWriter, r *http.Request) {
+func (s *serverImpl) lease(w http.ResponseWriter, r *http.Request) {
 
 	query, err := NewQuery(r)
 	if err != nil {
@@ -416,7 +428,7 @@ func (s *RestServer) lease(w http.ResponseWriter, r *http.Request) {
 	s.write(w, result, contentType)
 }
 
-func (s *RestServer) renew(w http.ResponseWriter, r *http.Request) {
+func (s *serverImpl) renew(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -450,7 +462,7 @@ func (s *RestServer) renew(w http.ResponseWriter, r *http.Request) {
 	s.write(w, result, contentType)
 }
 
-func (s *RestServer) release(w http.ResponseWriter, r *http.Request) {
+func (s *serverImpl) release(w http.ResponseWriter, r *http.Request) {
 	query, err := NewQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -469,7 +481,7 @@ func (s *RestServer) release(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Ok.\n"))
 }
 
-func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.ContentType) error {
+func (s *serverImpl) write(w http.ResponseWriter, value interface{}, t client.ContentType) error {
 
 	switch t {
 	case client.JSON:
@@ -504,14 +516,6 @@ func (s *RestServer) write(w http.ResponseWriter, value interface{}, t client.Co
 	}
 
 	return fmt.Errorf("unknown content format: %v", t)
-}
-
-func (s *RestServer) getKubeClient(kubeconfig string, logger logger.Logger) (kubernetes.KubeClient, error) {
-	if s.clientset != nil {
-		return kubernetes.NewTestKubeClient(s.clientset, s.logger)
-	} else {
-		return kubernetes.NewKubeClient(kubeconfig, s.logger)
-	}
 }
 
 func httpError(w http.ResponseWriter, code int) {

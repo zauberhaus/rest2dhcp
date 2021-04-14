@@ -40,8 +40,8 @@ type DHCPClient interface {
 	Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error
 }
 
-// Client is a simple DHCP relay client
-type Client struct {
+// dhcpClientImpl is a simple DHCP relay client
+type dhcpClientImpl struct {
 	background.Process
 	conn  Connection
 	store *LeaseStore
@@ -71,7 +71,7 @@ func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType Co
 		connResolver = &DefaultConnectioneResolver{}
 	}
 
-	client := Client{
+	client := dhcpClientImpl{
 		store:    NewStore(60*time.Second, logger),
 		timeout:  timeout,
 		retry:    retry,
@@ -125,7 +125,7 @@ func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType Co
 	return &client
 }
 
-func (c *Client) Start() chan bool {
+func (c *dhcpClientImpl) Start() chan bool {
 	return c.Run(func(ctx context.Context) bool {
 		c.store.Run(ctx)
 
@@ -181,7 +181,7 @@ func (c *Client) Start() chan bool {
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease {
+func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease {
 	chan1 := make(chan *Lease, 1)
 
 	if chaddr == nil {
@@ -276,7 +276,7 @@ func (c *Client) GetLease(ctx context.Context, hostname string, chaddr net.Hardw
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *Lease {
+func (c *dhcpClientImpl) Renew(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan *Lease {
 	chan1 := make(chan *Lease, 1)
 
 	if chaddr == nil {
@@ -341,7 +341,7 @@ func (c *Client) Renew(ctx context.Context, hostname string, chaddr net.Hardware
 // @param hostname Hostname
 // @param mac Mac address
 // @param ip IP address
-func (c *Client) Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
+func (c *dhcpClientImpl) Release(ctx context.Context, hostname string, chaddr net.HardwareAddr, ip net.IP) chan error {
 	chan1 := make(chan error, 1)
 
 	if chaddr == nil {
@@ -378,7 +378,7 @@ func (c *Client) Release(ctx context.Context, hostname string, chaddr net.Hardwa
 	return chan1
 }
 
-func (c *Client) discover(ctx context.Context, xid uint32, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
+func (c *dhcpClientImpl) discover(ctx context.Context, xid uint32, conn Connection, hostname string, chaddr net.HardwareAddr, options layers.DHCPOptions) chan *Lease {
 	chan1 := make(chan *Lease)
 
 	go func() {
@@ -416,7 +416,7 @@ func (c *Client) discover(ctx context.Context, xid uint32, conn Connection, host
 	return chan1
 }
 
-func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease *Lease, conn Connection, options layers.DHCPOptions) chan *Lease {
+func (c *dhcpClientImpl) request(ctx context.Context, msgType layers.DHCPMsgType, lease *Lease, conn Connection, options layers.DHCPOptions) chan *Lease {
 	rc := make(chan *Lease, 1)
 
 	go func() {
@@ -448,7 +448,7 @@ func (c *Client) request(ctx context.Context, msgType layers.DHCPMsgType, lease 
 
 }
 
-func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
+func (c *dhcpClientImpl) getAutoConnectionType(remote net.IP) ConnectionType {
 	client := http.Client{
 		Timeout: 1 * time.Second,
 	}
@@ -468,7 +468,7 @@ func (c *Client) getAutoConnectionType(remote net.IP) ConnectionType {
 	return UDP
 }
 
-func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
+func (c *dhcpClientImpl) getHardwareAddr(name string) net.HardwareAddr {
 
 	addr, err := net.ParseMAC(name)
 	if err == nil {
@@ -485,7 +485,7 @@ func (c *Client) getHardwareAddr(name string) net.HardwareAddr {
 		byte(0xff & (h >> 40))}
 }
 
-func (c *Client) wait(ctx context.Context, ch chan *Lease) *Lease {
+func (c *dhcpClientImpl) wait(ctx context.Context, ch chan *Lease) *Lease {
 	select {
 	case lease := <-ch:
 		return lease
@@ -494,7 +494,7 @@ func (c *Client) wait(ctx context.Context, ch chan *Lease) *Lease {
 	}
 }
 
-func (c *Client) sleep(ctx context.Context, timeout time.Duration) bool {
+func (c *dhcpClientImpl) sleep(ctx context.Context, timeout time.Duration) bool {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

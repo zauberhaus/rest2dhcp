@@ -30,7 +30,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/logger"
 	"github.com/zauberhaus/rest2dhcp/service"
@@ -50,7 +49,7 @@ type RootCommand struct {
 	cfgFile string
 	kube    dhcp.KubeServiceConfig
 	config  service.ServerConfig
-	server  background.Server
+	server  service.Server
 	logger  logger.Logger
 	viper   *viper.Viper
 }

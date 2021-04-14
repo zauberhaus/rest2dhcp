@@ -46,17 +46,6 @@ func TestNewKubeClient(t *testing.T) {
 
 }
 
-func TestNewTestKubeClient(t *testing.T) {
-	clientset := testclient.NewSimpleClientset()
-	logger := mock.NewTestLogger()
-
-	client, err := kubernetes.NewTestKubeClient(clientset, logger)
-	assert.NoError(t, err)
-	assert.NotNil(t, client)
-	assert.Equal(t, clientset, getClientSet(client))
-	assert.Equal(t, logger, getLogger(client))
-}
-
 func TestKubeClientImpl_GetConfigMap(t *testing.T) {
 	logger := mock.NewTestLogger()
 	clientset := testclient.NewSimpleClientset()
