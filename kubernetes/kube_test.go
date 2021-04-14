@@ -80,8 +80,8 @@ func TestKubeClientImpl_GetConfigMap(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, cm)
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	result, err := k.GetConfigMap(ctx, ns.GetObjectMeta().GetName(), "abc")
@@ -119,8 +119,8 @@ func TestKubeClientImpl_GetService(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, svc)
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	result, err := k.GetService(ctx, ns.GetObjectMeta().GetName(), "abc")
@@ -169,8 +169,8 @@ func TestKubeClientImpl_GetServicesForLB(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, svc2)
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	result, err := k.GetServicesForLB(ctx)
@@ -206,8 +206,8 @@ func TestKubeClientImpl_GetConfig(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, cm)
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	result, err := k.GetConfig(ctx, ns.GetObjectMeta().GetName(), cm.GetObjectMeta().GetName(), "test")
@@ -250,8 +250,8 @@ func TestKubeClientImpl_Patch(t *testing.T) {
 	patch := kubernetes.NewPatch()
 	patch.SetAnnotation(svc, "test", "123")
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	result, err := k.PatchService(ctx, ns.GetObjectMeta().GetName(), svc.GetObjectMeta().GetName(), patch)
@@ -287,8 +287,8 @@ func TestKubeClientImpl_Watch(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, svc)
 
-	k := &kubernetes.KubeClientImpl{}
-	setLogger(k, logger)
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
 	setClientSet(k, clientset)
 
 	changed, cancel := k.WatchService(ctx)
@@ -328,7 +328,7 @@ func TestKubeClientImpl_Watch(t *testing.T) {
 	assert.Equal(t, svc2, result[0])
 }
 
-func setClientSet(k *kubernetes.KubeClientImpl, c kube.Interface) {
+func setClientSet(k kubernetes.KubeClient, c kube.Interface) {
 	pointerVal := reflect.ValueOf(k)
 	val := reflect.Indirect(pointerVal)
 	member := val.FieldByName("client")
@@ -344,15 +344,6 @@ func getClientSet(k interface{}) kube.Interface {
 	ptrToY := unsafe.Pointer(member.UnsafeAddr())
 	realPtrToY := (*kube.Interface)(ptrToY)
 	return *realPtrToY
-}
-
-func setLogger(k *kubernetes.KubeClientImpl, l logger.Logger) {
-	pointerVal := reflect.ValueOf(k)
-	val := reflect.Indirect(pointerVal)
-	member := val.FieldByName("logger")
-	ptrToY := unsafe.Pointer(member.UnsafeAddr())
-	realPtrToY := (*logger.Logger)(ptrToY)
-	*realPtrToY = l
 }
 
 func getLogger(k interface{}) logger.Logger {
