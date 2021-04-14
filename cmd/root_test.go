@@ -28,7 +28,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/cmd"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
@@ -324,12 +323,12 @@ func run(t *testing.T, check Check, args ...string) {
 	assert.NoError(t, err)
 }
 
-func setServer(f *cmd.RootCommand, s background.Server) {
+func setServer(f *cmd.RootCommand, s service.Server) {
 	pointerVal := reflect.ValueOf(f)
 	val := reflect.Indirect(pointerVal)
 	member := val.FieldByName("server")
 	ptrToY := unsafe.Pointer(member.UnsafeAddr())
-	realPtrToY := (*background.Server)(ptrToY)
+	realPtrToY := (*service.Server)(ptrToY)
 	*realPtrToY = s
 }
 

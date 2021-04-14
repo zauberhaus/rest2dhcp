@@ -22,11 +22,12 @@ type KubeClient interface {
 	GetServicesForLB(ctx context.Context) ([]*v1.Service, error)
 	GetConfig(ctx context.Context, namespace string, name string, config string) (string, error)
 	GetService(ctx context.Context, namespace string, name string) (*v1.Service, error)
+	GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error)
 	PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error)
 	WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc)
 }
 
-type KubeClientImpl struct {
+type kubeClientImpl struct {
 	client kubernetes.Interface
 	logger logger.Logger
 }
@@ -69,20 +70,13 @@ func NewKubeClient(kubeconfig string, logger logger.Logger) (KubeClient, error) 
 		return nil, err
 	}
 
-	return &KubeClientImpl{
+	return &kubeClientImpl{
 		client: clientset,
 		logger: logger,
 	}, nil
 }
 
-func NewTestKubeClient(client kubernetes.Interface, logger logger.Logger) (KubeClient, error) {
-	return &KubeClientImpl{
-		client: client,
-		logger: logger,
-	}, nil
-}
-
-func (k *KubeClientImpl) GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error) {
+func (k *kubeClientImpl) GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error) {
 	m, err := k.client.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -91,7 +85,7 @@ func (k *KubeClientImpl) GetConfigMap(ctx context.Context, namespace string, nam
 	return m, nil
 }
 
-func (k *KubeClientImpl) GetService(ctx context.Context, namespace string, name string) (*v1.Service, error) {
+func (k *kubeClientImpl) GetService(ctx context.Context, namespace string, name string) (*v1.Service, error) {
 	m, err := k.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -100,7 +94,7 @@ func (k *KubeClientImpl) GetService(ctx context.Context, namespace string, name 
 	return m, nil
 }
 
-func (k *KubeClientImpl) GetServicesForLB(ctx context.Context) ([]*v1.Service, error) {
+func (k *kubeClientImpl) GetServicesForLB(ctx context.Context) ([]*v1.Service, error) {
 	services, err := k.client.CoreV1().Services(v1.NamespaceAll).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -117,7 +111,7 @@ func (k *KubeClientImpl) GetServicesForLB(ctx context.Context) ([]*v1.Service, e
 	return rc, nil
 }
 
-func (k *KubeClientImpl) GetConfig(ctx context.Context, namespace string, name string, config string) (string, error) {
+func (k *kubeClientImpl) GetConfig(ctx context.Context, namespace string, name string, config string) (string, error) {
 	cm, err := k.GetConfigMap(ctx, namespace, name)
 	if err != nil {
 		return "", err
@@ -132,7 +126,7 @@ func (k *KubeClientImpl) GetConfig(ctx context.Context, namespace string, name s
 	return cfg, nil
 }
 
-func (k *KubeClientImpl) PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error) {
+func (k *kubeClientImpl) PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error) {
 
 	data := []byte(patch.String())
 
@@ -144,7 +138,7 @@ func (k *KubeClientImpl) PatchService(ctx context.Context, namespace string, nam
 	return nil, err
 }
 
-func (k *KubeClientImpl) WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc) {
+func (k *kubeClientImpl) WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc) {
 	changed := make(chan [2]metav1.Object, 1)
 	stopper := make(chan struct{})
 

@@ -35,9 +35,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
-	"github.com/zauberhaus/rest2dhcp/background"
 	"github.com/zauberhaus/rest2dhcp/client"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
+	"github.com/zauberhaus/rest2dhcp/kubernetes"
 	"github.com/zauberhaus/rest2dhcp/logger"
 	"github.com/zauberhaus/rest2dhcp/mock"
 	"github.com/zauberhaus/rest2dhcp/service"
@@ -210,7 +210,10 @@ func TestNewServerWithKubernetes(t *testing.T) {
 			server := service.NewServer(logger)
 			assert.NotNil(t, server)
 
-			setClientSet(server, clientset)
+			client, err := getMockKubeClient(clientset, logger)
+			assert.NoError(t, err)
+
+			setKubeClient(server, client)
 			setDHCPClient(server, dhcpClient)
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -288,7 +291,10 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
 
-	setClientSet(server, clientset)
+	client, err := getMockKubeClient(clientset, logger)
+	assert.NoError(t, err)
+
+	setKubeClient(server, client)
 	setDHCPClient(server, dhcpClient)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1028,7 +1034,7 @@ func TestServer_Release(t *testing.T) {
 
 }
 
-func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (background.Server, *mock.MockDHCPClient, context.CancelFunc) {
+func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (service.Server, *mock.MockDHCPClient, context.CancelFunc) {
 	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
 	port := getPort()
@@ -1099,7 +1105,7 @@ func readTestData(file string) (string, error) {
 	return result, nil
 }
 
-func getRequestUrl(server background.Server, path ...string) string {
+func getRequestUrl(server service.Server, path ...string) string {
 	if len(path) != 2 || path[1] == "" {
 		return fmt.Sprintf("http://%v:%v%v", server.Hostname(), server.Port(), path[0])
 	} else {
@@ -1107,26 +1113,39 @@ func getRequestUrl(server background.Server, path ...string) string {
 	}
 }
 
-func setClientSet(server background.Server, c kube.Interface) {
-	restServer, ok := server.(*service.RestServer)
-	if ok {
-		pointerVal := reflect.ValueOf(restServer)
-		val := reflect.Indirect(pointerVal)
-		member := val.FieldByName("clientset")
-		ptrToY := unsafe.Pointer(member.UnsafeAddr())
-		realPtrToY := (*kube.Interface)(ptrToY)
-		*realPtrToY = c
+func getMockKubeClient(c kube.Interface, logger logger.Logger) (kubernetes.KubeClient, error) {
+	client, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	if err == nil && client != nil {
+		setClientSet(client, c)
+		return client, nil
+	} else {
+		return nil, err
 	}
 }
 
-func setDHCPClient(server background.Server, c dhcp.DHCPClient) {
-	restServer, ok := server.(*service.RestServer)
-	if ok {
-		pointerVal := reflect.ValueOf(restServer)
-		val := reflect.Indirect(pointerVal)
-		member := val.FieldByName("client")
-		ptrToY := unsafe.Pointer(member.UnsafeAddr())
-		realPtrToY := (*dhcp.DHCPClient)(ptrToY)
-		*realPtrToY = c
-	}
+func setKubeClient(server service.Server, c kubernetes.KubeClient) {
+	pointerVal := reflect.ValueOf(server)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("kube")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*kubernetes.KubeClient)(ptrToY)
+	*realPtrToY = c
+}
+
+func setClientSet(client kubernetes.KubeClient, c kube.Interface) {
+	pointerVal := reflect.ValueOf(client)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("client")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*kube.Interface)(ptrToY)
+	*realPtrToY = c
+}
+
+func setDHCPClient(server service.Server, c dhcp.DHCPClient) {
+	pointerVal := reflect.ValueOf(server)
+	val := reflect.Indirect(pointerVal)
+	member := val.FieldByName("client")
+	ptrToY := unsafe.Pointer(member.UnsafeAddr())
+	realPtrToY := (*dhcp.DHCPClient)(ptrToY)
+	*realPtrToY = c
 }
