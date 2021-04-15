@@ -347,6 +347,12 @@ func TestServer_Requests(t *testing.T) {
 			statuscode: http.StatusFound,
 		},
 		{
+			name:       "Call metrics",
+			method:     "GET",
+			url:        getRequestUrl(server, "/metrics"),
+			statuscode: http.StatusOK,
+		},
+		{
 			name:       "Call api",
 			method:     "GET",
 			url:        getRequestUrl(server, "/"),
@@ -357,12 +363,6 @@ func TestServer_Requests(t *testing.T) {
 			method:     "GET",
 			url:        getRequestUrl(server, "/api/swagger.yaml"),
 			statuscode: http.StatusOK,
-		},
-		{
-			name:       "Call doc",
-			method:     "GET",
-			url:        getRequestUrl(server, "/doc/"),
-			statuscode: 200,
 		},
 		{
 			name:       "Call doc",
@@ -405,6 +405,7 @@ func TestServer_Requests(t *testing.T) {
 				tt.header["Accept"] = string(tt.content)
 			}
 
+			fmt.Printf("Request %s: %v %v\n", tt.name, tt.method, tt.url)
 			response := request(t, tt.method, tt.url, tt.header, tt.follow)
 			if !assert.Equal(t, tt.statuscode, response.StatusCode) {
 				t.Fail()
@@ -425,9 +426,13 @@ func TestServer_Requests(t *testing.T) {
 				result := strings.Replace(data2, "go1.16", runtime.Version(), 1)
 				result = strings.Replace(result, "linux/amd64", arch, 1)
 
-				assert.Equal(t, result, string(body))
+				tmp := string(body)
+
+				assert.Equal(t, result, tmp)
 			} else if tt.body != "" {
 				assert.Equal(t, tt.body, string(body))
+			} else if tt.statuscode == 200 {
+				assert.Greater(t, len(body), 0)
 			}
 
 		})
@@ -1105,12 +1110,8 @@ func readTestData(file string) (string, error) {
 	return result, nil
 }
 
-func getRequestUrl(server service.Server, path ...string) string {
-	if len(path) != 2 || path[1] == "" {
-		return fmt.Sprintf("http://%v:%v%v", server.Hostname(), server.Port(), path[0])
-	} else {
-		return fmt.Sprintf("http://%v:%v%v", path[1], server.Port(), path[0])
-	}
+func getRequestUrl(server service.Server, url string) string {
+	return fmt.Sprintf("http://localhost:%v%v", server.Port(), url)
 }
 
 func getMockKubeClient(c kube.Interface, logger logger.Logger) (kubernetes.KubeClient, error) {
