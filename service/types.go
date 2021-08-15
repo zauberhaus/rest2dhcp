@@ -106,7 +106,7 @@ func (c *ServerConfig) String() string {
 }
 
 // NewLease initializes a new lease object from a DHCP package
-func NewLease(hostname string, l dhcp.Lease) *client.Lease {
+func NewLease(hostname string, l *dhcp.Lease) *client.Lease {
 
 	return &client.Lease{
 		Hostname: hostname,

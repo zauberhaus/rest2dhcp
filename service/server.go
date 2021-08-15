@@ -422,7 +422,7 @@ func (s *serverImpl) lease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := NewLease(query.Hostname, *lease)
+	result := NewLease(query.Hostname, lease)
 	contentType := r.Context().Value(Content).(client.ContentType)
 
 	s.write(w, result, contentType)
@@ -457,7 +457,7 @@ func (s *serverImpl) renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := NewLease(query.Hostname, *lease)
+	result := NewLease(query.Hostname, lease)
 	contentType := r.Context().Value(Content).(client.ContentType)
 	s.write(w, result, contentType)
 }
