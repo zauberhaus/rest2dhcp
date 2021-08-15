@@ -15,7 +15,10 @@ type Zerologger struct {
 }
 
 func New() Logger {
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}).With().Timestamp().Logger()
+	fileInfo, _ := os.Stdout.Stat()
+	noColor := (fileInfo.Mode() & os.ModeCharDevice) == 0
+
+	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, NoColor: noColor, TimeFormat: time.RFC3339Nano}).With().Timestamp().Logger()
 	log.GetLevel()
 	return Zerologger{log: log}
 }
