@@ -186,11 +186,11 @@ func (s *serverImpl) init(ctx context.Context, config *ServerConfig, version *cl
 			if err == nil {
 				config.Relay = extIP
 			} else {
-				s.logger.Errorf("Get relay ip: %v", err)
+				s.logger.Errorf("Auto detect relay IP from Kubernetes failed: %v", err)
 				if config.Relay != nil {
 					resolver = dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, s.logger)
 				} else {
-					resolver = nil
+					s.logger.Fatalf("No valid replay IP")
 				}
 			}
 		} else {

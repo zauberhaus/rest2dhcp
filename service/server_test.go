@@ -286,7 +286,7 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	version := client.NewVersion("now", "123456", "0001", "dirty")
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 1, 0, 3, 1, 0, 0, 1)
+	defer logger.Assert(t, 1, 1, 0, 3, 1, 0, 0, 1)
 
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
