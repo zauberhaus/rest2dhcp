@@ -72,10 +72,16 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+    - name: Install Snyk
+      uses: snyk/actions/setup@master  
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
     - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/node@master
+      run: snyk test
       env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   integration-test:
     strategy:
