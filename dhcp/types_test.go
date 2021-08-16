@@ -165,7 +165,7 @@ func TestConnectionTypeUnmarshalInvalidYAML(t *testing.T) {
 
 	err = yaml.Unmarshal([]byte("ct: xyz\n"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
 func TestConnectionTypeUnmarshalJSON(t *testing.T) {
@@ -196,7 +196,7 @@ func TestConnectionTypeUnmarshalInvalidJSON(t *testing.T) {
 
 	err = json.Unmarshal([]byte("{\"CT\":\"xyz\"}"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
 func TestConnectionTypeUnmarshalXML(t *testing.T) {
@@ -227,7 +227,7 @@ func TestConnectionTypeUnmarshalInvalidXML(t *testing.T) {
 
 	err = xml.Unmarshal([]byte("<data><CT>xyz</CT></data>"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
 func TestConnectionTypeMarshalYAML(t *testing.T) {

@@ -124,7 +124,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 		},
 		{
 			name: "missing exernal ip",
-			msgs: []int64{0, 1, 0, 3, 1, 0, 0, 1},
+			msgs: []int64{1, 1, 0, 3, 1, 0, 0, 1},
 			svc: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
