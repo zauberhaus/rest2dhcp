@@ -28,3 +28,4 @@ mem.pprof
 .env
 .secrets
 *.old
+.scannerwork

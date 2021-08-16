@@ -80,7 +80,7 @@ func (c *ConnectionType) Parse(txt string) error {
 	case string(Broken):
 		*c = Broken
 	default:
-		return fmt.Errorf("Unknown connection type '%s'", txt)
+		return fmt.Errorf("unknown connection type '%s'", txt)
 	}
 
 	return nil

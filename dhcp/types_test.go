@@ -48,7 +48,7 @@ func getDHCP4() *dhcp.DHCP4 {
 	return lease.DHCP4
 }
 
-func TestConnectionType_String(t *testing.T) {
+func TestConnectionTypeString(t *testing.T) {
 	tests := []struct {
 		c    dhcp.ConnectionType
 		want string
@@ -87,7 +87,7 @@ func TestConnectionType_String(t *testing.T) {
 	}
 }
 
-func TestConnectionType_Parse(t *testing.T) {
+func TestConnectionTypeParse(t *testing.T) {
 	var c dhcp.ConnectionType
 
 	tests := []struct {
@@ -137,7 +137,7 @@ func TestConnectionType_Parse(t *testing.T) {
 	}
 }
 
-func TestConnectionType_UnmarshalYAML(t *testing.T) {
+func TestConnectionTypeUnmarshalYAML(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -152,7 +152,7 @@ func TestConnectionType_UnmarshalYAML(t *testing.T) {
 	}
 }
 
-func TestConnectionType_UnmarshalInvalidYAML(t *testing.T) {
+func TestConnectionTypeUnmarshalInvalidYAML(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -165,10 +165,10 @@ func TestConnectionType_UnmarshalInvalidYAML(t *testing.T) {
 
 	err = yaml.Unmarshal([]byte("ct: xyz\n"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
-func TestConnectionType_UnmarshalJSON(t *testing.T) {
+func TestConnectionTypeUnmarshalJSON(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -183,7 +183,7 @@ func TestConnectionType_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestConnectionType_UnmarshalInvalidJSON(t *testing.T) {
+func TestConnectionTypeUnmarshalInvalidJSON(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -196,10 +196,10 @@ func TestConnectionType_UnmarshalInvalidJSON(t *testing.T) {
 
 	err = json.Unmarshal([]byte("{\"CT\":\"xyz\"}"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
-func TestConnectionType_UnmarshalXML(t *testing.T) {
+func TestConnectionTypeUnmarshalXML(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -214,7 +214,7 @@ func TestConnectionType_UnmarshalXML(t *testing.T) {
 	}
 }
 
-func TestConnectionType_UnmarshalInvalidXML(t *testing.T) {
+func TestConnectionTypeUnmarshalInvalidXML(t *testing.T) {
 	type data struct {
 		CT dhcp.ConnectionType
 	}
@@ -227,10 +227,10 @@ func TestConnectionType_UnmarshalInvalidXML(t *testing.T) {
 
 	err = xml.Unmarshal([]byte("<data><CT>xyz</CT></data>"), &result)
 
-	assert.EqualError(t, err, "Unknown connection type 'xyz'")
+	assert.EqualError(t, err, "unknown connection type 'xyz'")
 }
 
-func TestConnectionType_MarshalYAML(t *testing.T) {
+func TestConnectionTypeMarshalYAML(t *testing.T) {
 	var m yaml.Marshaler = dhcp.UDP
 
 	buffer, err := yaml.Marshal(m)
@@ -241,7 +241,7 @@ func TestConnectionType_MarshalYAML(t *testing.T) {
 	}
 }
 
-func TestConnectionType_MarshalJSON(t *testing.T) {
+func TestConnectionTypeMarshalJSON(t *testing.T) {
 	var m json.Marshaler = dhcp.UDP
 
 	buffer, err := json.Marshal(m)
@@ -252,7 +252,7 @@ func TestConnectionType_MarshalJSON(t *testing.T) {
 	}
 }
 
-func TestConnectionType_MarshalXML(t *testing.T) {
+func TestConnectionTypeMarshalXML(t *testing.T) {
 	var m xml.Marshaler = dhcp.UDP
 
 	buffer, err := xml.Marshal(m)
@@ -263,7 +263,7 @@ func TestConnectionType_MarshalXML(t *testing.T) {
 	}
 }
 
-func TestKubeServiceConfig_String(t *testing.T) {
+func TestKubeServiceConfigString(t *testing.T) {
 	c := &dhcp.KubeServiceConfig{
 		Config:    "./kube.config",
 		Namespace: "default",

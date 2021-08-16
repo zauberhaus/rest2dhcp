@@ -39,6 +39,10 @@ import (
 	"github.com/zauberhaus/rest2dhcp/service"
 )
 
+const (
+	unexpected = "Unexpected status code"
+)
+
 var (
 	_port   int32 = 40000 + int32(rand.Intn(10000))
 	host          = "http://localhost"
@@ -94,7 +98,7 @@ func TestClientVersion(t *testing.T) {
 					t.Fatalf("Unexpected error type")
 				}
 
-				assert.Equal(t, 415, clientError.Code(), "Unexpected status code")
+				assert.Equal(t, 415, clientError.Code(), unexpected)
 
 			} else if assert.NoError(t, err, "client.Version failed") {
 				if assert.NotNil(t, version, "Empty version info") {
@@ -224,7 +228,7 @@ func TestClient(t *testing.T) {
 					assert.Fail(t, "Unexpected error type")
 				}
 
-				assert.Equal(t, 415, clientError.Code(), "Unexpected status code")
+				assert.Equal(t, 415, clientError.Code(), unexpected)
 
 				return
 			}
@@ -271,7 +275,7 @@ func TestClient(t *testing.T) {
 	<-server.Done()
 }
 
-func TestClient_GetLease_Fail(t *testing.T) {
+func TestClientGetLeaseFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -330,7 +334,7 @@ func TestClient_GetLease_Fail(t *testing.T) {
 				assert.Fail(t, "Expect an error")
 			}
 
-			assert.Equal(t, tc.Code, clientError.Code(), "Unexpected status code")
+			assert.Equal(t, tc.Code, clientError.Code(), unexpected)
 
 			assert.Nil(t, lease)
 		})
@@ -340,7 +344,7 @@ func TestClient_GetLease_Fail(t *testing.T) {
 	<-server.Done()
 }
 
-func TestClient_Lease_InvalidParameter(t *testing.T) {
+func TestClientLeaseInvalidParameter(t *testing.T) {
 	tests := []struct {
 		name     string
 		hostname string
@@ -364,7 +368,7 @@ func TestClient_Lease_InvalidParameter(t *testing.T) {
 	}
 }
 
-func TestClient_Renew_InvalidParameter(t *testing.T) {
+func TestClientRenewInvalidParameter(t *testing.T) {
 	tests := []struct {
 		name     string
 		hostname string
@@ -399,7 +403,7 @@ func TestClient_Renew_InvalidParameter(t *testing.T) {
 	}
 }
 
-func TestClient_Release_InvalidParameter(t *testing.T) {
+func TestClientReleaseInvalidParameter(t *testing.T) {
 	tests := []struct {
 		name     string
 		hostname string
@@ -439,7 +443,7 @@ func TestClient_Release_InvalidParameter(t *testing.T) {
 	}
 }
 
-func TestClient_Release_Error(t *testing.T) {
+func TestClientReleaseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 

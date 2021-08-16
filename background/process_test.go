@@ -11,6 +11,10 @@ import (
 	"github.com/zauberhaus/rest2dhcp/mock"
 )
 
+const (
+	tick = "tick %v"
+)
+
 func TestBackgroundProcessFinish(t *testing.T) {
 	val := 0
 
@@ -24,7 +28,7 @@ func TestBackgroundProcessFinish(t *testing.T) {
 		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return true
@@ -52,7 +56,7 @@ func TestBackgroundProcessFinishAndStop(t *testing.T) {
 		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return true
@@ -82,7 +86,7 @@ func TestBackgroundProcessCancel(t *testing.T) {
 		return exec(ctx, 75*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return false
@@ -122,7 +126,7 @@ func TestBackgroundProcessInitSchutdown(t *testing.T) {
 		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return true
@@ -164,7 +168,7 @@ func TestBackgroundProcessInitFailed(t *testing.T) {
 		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return true
@@ -205,7 +209,7 @@ func TestBackgroundProcessShutdownFailed(t *testing.T) {
 		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
 			val := p[0].(*int)
 
-			logger.Infof("tick %v", time.Now())
+			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
 			return true

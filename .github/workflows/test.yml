@@ -3,7 +3,7 @@
 name: Tests
 
 on:
-  push:
+  push:    
     branches:
       - dev
   pull_request:
@@ -20,13 +20,12 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
     - name: Install Go
-      if: success()
       uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.goversion }}
     - name: Checkout code
       uses: actions/checkout@v2
-    - name: Run tests 
+    - name: Tests 
       run: |
         go get github.com/mjibson/esc
         go get github.com/jandelgado/gcov2lcov
@@ -43,6 +42,30 @@ jobs:
       with:
           github-token: ${{ secrets.github_token }}
           path-to-lcov: /tmp/coverage.lcov
+
+  sonarcloud:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Tests 
+      run: |
+        go get github.com/mjibson/esc
+        go get github.com/jandelgado/gcov2lcov
+        go generate ./service/server.go
+        go test -coverprofile=coverage.out ./background ./client ./cmd ./dhcp ./kubernetes ./service
+    - name: SonarCloud Scan
+      if: success()
+      uses: sonarsource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   integration-test:
     strategy:
