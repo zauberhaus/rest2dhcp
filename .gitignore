@@ -20,7 +20,6 @@ example/example
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-service/doc.go
 doc/swagger.yaml
 cpu.pprof
 cpu.profile
