@@ -63,6 +63,9 @@ jobs:
     - name: SonarCloud Scan
       if: success()
       uses: sonarsource/sonarcloud-github-action@master
+      with:
+        args: >
+          -Dsonar.projectVersion=${GITHUB_REF#refs/*/}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -70,18 +73,11 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Install Snyk
-      uses: snyk/actions/setup@master  
-    - name: Install Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: 1.16
-    - name: Run Snyk to check for vulnerabilities
-      run: snyk test
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      - uses: actions/checkout@master
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/golang@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   integration-test:
     strategy:
