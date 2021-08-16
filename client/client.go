@@ -88,22 +88,9 @@ func (c *implClient) Lease(ctx context.Context, hostname string, mac MAC) (*Leas
 		url += "/" + mac.String()
 	}
 
-	resp, err := c.request(ctx, "GET", url, c.contentType)
+	data, contentType, err := c.call(ctx, "GET", url)
 	if err != nil {
 		return nil, err
-	}
-
-	data, contentType, err := c.read(resp)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		if data[len(data)-1] == '\n' {
-			data = data[:len(data)-1]
-		}
-
-		return nil, NewError(resp.StatusCode, string(data))
 	}
 
 	var result Lease
@@ -143,24 +130,9 @@ func (c *implClient) Renew(ctx context.Context, hostname string, mac MAC, ip net
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip.To4())
 
-	resp, err := c.request(ctx, "GET", url, c.contentType)
-	if err != nil {
-		fmt.Println(err)
-
-		return nil, err
-	}
-
-	data, contentType, err := c.read(resp)
+	data, contentType, err := c.call(ctx, "GET", url)
 	if err != nil {
 		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		if data[len(data)-1] == '\n' {
-			data = data[:len(data)-1]
-		}
-
-		return nil, NewError(resp.StatusCode, string(data))
 	}
 
 	var result Lease
@@ -194,25 +166,12 @@ func (c *implClient) Release(ctx context.Context, hostname string, mac MAC, ip n
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip)
 
-	resp, err := c.request(ctx, "DELETE", url, c.contentType)
+	_, _, err := c.call(ctx, "DELETE", url)
 	if err != nil {
 		return err
 	}
 
-	data, _, err := c.read(resp)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		if data[len(data)-1] == '\n' {
-			data = data[:len(data)-1]
-		}
-
-		return NewError(resp.StatusCode, string(data))
-	}
-
-	return nil
+	return err
 }
 
 /*
@@ -224,22 +183,9 @@ Version returns the service version information
 func (c *implClient) Version(ctx context.Context) (*Version, error) {
 	url := fmt.Sprintf("%s/version", c.url)
 
-	resp, err := c.request(ctx, "GET", url, c.contentType)
+	data, contentType, err := c.call(ctx, "GET", url)
 	if err != nil {
 		return nil, err
-	}
-
-	data, contentType, err := c.read(resp)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		if data[len(data)-1] == '\n' {
-			data = data[:len(data)-1]
-		}
-
-		return nil, NewError(resp.StatusCode, string(data))
 	}
 
 	var info Version
@@ -251,13 +197,35 @@ func (c *implClient) Version(ctx context.Context) (*Version, error) {
 	return &info, nil
 }
 
-func (c *implClient) request(ctx context.Context, method string, url string, mime ContentType) (*http.Response, error) {
+func (c *implClient) call(ctx context.Context, method string, url string) ([]byte, ContentType, error) {
+	resp, err := c.request(ctx, method, url)
+	if err != nil {
+		return nil, "", err
+	}
+
+	data, contentType, err := c.read(resp)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+
+		return nil, "", NewError(resp.StatusCode, string(data))
+	}
+
+	return data, contentType, nil
+}
+
+func (c *implClient) request(ctx context.Context, method string, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Accept", string(mime))
+	req.Header.Set("Accept", string(c.contentType))
 
 	client := &http.Client{}
 	resp, err := client.Do(req)

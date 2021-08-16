@@ -144,42 +144,72 @@ func (c *dhcpClientImpl) Start() chan bool {
 				return false
 			case dhcp := <-c3:
 				if dhcp != nil {
-					go func() {
-						lease, ok, cancel := c.store.Get(dhcp.Xid)
-						defer cancel()
-
-						if ok {
-							msgType := dhcp.GetMsgType()
-							c.logger.Debugf("Got DHCP %s (%v)", msgType, lease.Xid)
-							if lease.CheckResponseType(dhcp) {
-								if msgType == layers.DHCPMsgTypeNak {
-									msg := dhcp.GetOption(layers.DHCPOptMessage)
-									if msg != nil {
-										lease.SetError(fmt.Errorf("NAK: %v", string(msg.Data)))
-									} else {
-										lease.SetError(fmt.Errorf("NAK"))
-									}
-								}
-
-								c.logger.Debugf("Change status %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), lease.Xid)
-								lease.DHCP4 = dhcp
-								lease.Touch()
-								close(lease.Done)
-								c.logger.Debugf("Lease done %v", lease.Xid)
-							} else {
-								c.logger.Errorf("Unexpected response %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), dhcp.Xid)
-							}
-
-						} else {
-							c.logger.Errorf("Unexpected DHCP response (%v)", dhcp.Xid)
-						}
-					}()
+					c.processDHCPReponse(dhcp)
 				} else {
 					c.logger.Error("Got empty packet")
 				}
 			}
 		}
 	})
+}
+
+func (c *dhcpClientImpl) processDHCPReponse(dhcp *DHCP4) {
+	lease, ok, cancel := c.store.Get(dhcp.Xid)
+	defer cancel()
+
+	if !ok {
+		c.logger.Errorf("Unexpected DHCP response (%v)", dhcp.Xid)
+		return
+	}
+
+	msgType := dhcp.GetMsgType()
+	c.logger.Debugf("Got DHCP %s (%v)", msgType, lease.Xid)
+	if !lease.CheckResponseType(dhcp) {
+		c.logger.Errorf("Unexpected response %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), dhcp.Xid)
+		return
+	}
+
+	if msgType == layers.DHCPMsgTypeNak {
+		msg := dhcp.GetOption(layers.DHCPOptMessage)
+		if msg != nil {
+			lease.SetError(fmt.Errorf("NAK: %v", string(msg.Data)))
+		} else {
+			lease.SetError(fmt.Errorf("NAK"))
+		}
+	}
+
+	c.logger.Debugf("Change status %s -> %s (%v)", lease.GetMsgType(), dhcp.GetMsgType(), lease.Xid)
+	lease.DHCP4 = dhcp
+	lease.Touch()
+	close(lease.Done)
+	c.logger.Debugf("Lease done %v", lease.Xid)
+}
+
+func (c *dhcpClientImpl) error(ctx context.Context, xid uint32, types ...layers.DHCPMsgType) (*Lease, bool) {
+	c.logger.Infof(timeoutMessage, c.retry, xid)
+	if !c.sleep(ctx, c.retry) {
+		return nil, false
+	}
+
+	l, ok, cancel := c.store.Get(xid)
+	defer cancel()
+
+	msgType := l.GetMsgType()
+	finished := false
+	for _, i := range types {
+		if i == msgType {
+			finished = true
+			break
+		}
+	}
+
+	if ok && finished {
+		c.store.Remove(l.Xid)
+		return l, false
+	}
+
+	c.logger.Info(retryMessage)
+	return nil, true
 }
 
 // GetLease requests a new lease with given hostname and mac address
@@ -212,19 +242,9 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 				c.store.Remove(lease.Xid)
 				break
 			} else {
-				c.logger.Infof(timeoutMessage, c.retry, xid)
-				if c.sleep(ctx, c.retry) {
-					l, ok, cancel := c.store.Get(xid)
-					defer cancel()
-
-					if ok && l.GetMsgType() == layers.DHCPMsgTypeOffer {
-						c.store.Remove(l.Xid)
-						lease = l
-						break
-					} else {
-						c.logger.Info(retryMessage)
-					}
-				} else {
+				tmp, ok := c.error(ctx, xid, layers.DHCPMsgTypeOffer)
+				if !ok {
+					lease = tmp
 					break
 				}
 			}
@@ -247,19 +267,9 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				c.logger.Infof(timeoutMessage, c.retry, lease.Xid)
-				if c.sleep(ctx, c.retry) {
-					l, ok, cancel := c.store.Get(lease.Xid)
-					defer cancel()
-
-					if ok && (l.GetMsgType() == layers.DHCPMsgTypeAck || l.GetMsgType() == layers.DHCPMsgTypeNak) {
-						c.store.Remove(l.Xid)
-						lease2 = l
-						break
-					} else {
-						c.logger.Info(retryMessage)
-					}
-				} else {
+				tmp, ok := c.error(ctx, lease.Xid, layers.DHCPMsgTypeAck, layers.DHCPMsgTypeNak)
+				if !ok {
+					lease2 = tmp
 					break
 				}
 			}
