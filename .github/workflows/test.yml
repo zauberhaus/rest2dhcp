@@ -1,16 +1,12 @@
-# This is a basic workflow to help you get started with Actions
-
-name: Tests
+name: "Unit Tests"
 
 on:
-  push:    
-    branches:
-      - dev
+  push:
+    branches: [ dev ]
   pull_request:
-    branches:
-      - dev
+    # The branches below must be a subset of the branches above
+    branches: [ dev ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   test:
     strategy:
@@ -43,58 +39,3 @@ jobs:
           github-token: ${{ secrets.github_token }}
           path-to-lcov: /tmp/coverage.lcov
 
-  sonarcloud:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Install Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: 1.16
-    - name: Checkout code
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Tests 
-      run: |
-        go get github.com/mjibson/esc
-        go get github.com/jandelgado/gcov2lcov
-        go generate ./service/server.go
-        go test -coverprofile=coverage.out ./background ./client ./cmd ./dhcp ./kubernetes ./service
-    - name: SonarCloud Scan
-      if: success()
-      uses: sonarsource/sonarcloud-github-action@master
-      with:
-        args: >
-          -Dsonar.projectVersion=${GITHUB_REF#refs/*/}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@master
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/golang@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-  integration-test:
-    strategy:
-      matrix:
-        goversion: ['1.16']
-        platform: [ubuntu-latest]
-    runs-on: ${{ matrix.platform }}
-    steps:
-    - name: Install Go
-      if: success()
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.goversion }}
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Integration tests 
-      run: |
-        go install github.com/onsi/ginkgo/ginkgo
-        cd tests && \
-        ./run.sh

@@ -1,0 +1,29 @@
+name: "Integration Tests"
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ dev ]
+
+jobs:
+  integration-test:
+    strategy:
+      matrix:
+        goversion: ['1.16']
+        platform: [ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Install Go
+      if: success()
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.goversion }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Integration tests 
+      run: |
+        go install github.com/onsi/ginkgo/ginkgo
+        cd tests && \
+        ./run.sh
