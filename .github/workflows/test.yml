@@ -67,6 +67,22 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Install Snyk
+      uses: snyk/actions/setup@master  
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - name: Run Snyk to check for vulnerabilities
+      run: snyk test
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
   integration-test:
     strategy:
       matrix:
