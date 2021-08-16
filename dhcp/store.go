@@ -26,6 +26,12 @@ import (
 	"github.com/zauberhaus/rest2dhcp/logger"
 )
 
+var (
+	nop = func() {
+		// Do nothing because response is nil.
+	}
+)
+
 //LeaseStoreItem describes a lease store item
 type LeaseStoreItem struct {
 	Lease  *Lease
@@ -66,7 +72,7 @@ func (l *LeaseStore) Set(lease *Lease) error {
 		}
 		return nil
 	} else {
-		return fmt.Errorf("Try to store empty lease")
+		return fmt.Errorf("try to store empty lease")
 	}
 
 }
@@ -85,7 +91,7 @@ func (l *LeaseStore) Get(xid uint32) (*Lease, bool, context.CancelFunc) {
 		}
 	}
 
-	return nil, ok, func() {}
+	return nil, ok, nop
 }
 
 // GetItem returns an item from the store
@@ -147,11 +153,7 @@ func (l *LeaseStore) HasStatus(xid uint32, status layers.DHCPMsgType) bool {
 
 	v, ok := l.store[xid]
 	if ok {
-		if v.Lease.GetMsgType() == status {
-			return true
-		}
-
-		return false
+		return v.Lease.GetMsgType() == status
 	}
 
 	return false
@@ -213,7 +215,7 @@ func (l *LeaseStore) Run(ctx context.Context) {
 				l.Clean()
 				timer.Reset(l.checks)
 			case <-ctx.Done():
-				break
+				return
 			}
 		}
 	}()

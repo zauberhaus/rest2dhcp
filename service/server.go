@@ -48,6 +48,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	contentType = "Content-Type"
+)
+
 var (
 	hostnameExp = regexp.MustCompile(`^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$`)
 
@@ -491,7 +495,7 @@ func (s *serverImpl) write(w http.ResponseWriter, value interface{}, t client.Co
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", string(client.JSON))
+		w.Header().Set(contentType, string(client.JSON))
 		_, err = w.Write(data)
 		return err
 	case client.XML:
@@ -501,7 +505,7 @@ func (s *serverImpl) write(w http.ResponseWriter, value interface{}, t client.Co
 		}
 		data = append(data, byte('\n'))
 
-		w.Header().Set("Content-Type", string(client.XML))
+		w.Header().Set(contentType, string(client.XML))
 		_, err = w.Write(data)
 		return err
 	case client.YAML:
@@ -510,7 +514,7 @@ func (s *serverImpl) write(w http.ResponseWriter, value interface{}, t client.Co
 			return err
 		}
 
-		w.Header().Set("Content-Type", string(client.YAML))
+		w.Header().Set(contentType, string(client.YAML))
 		_, err = w.Write(data)
 		return err
 	}

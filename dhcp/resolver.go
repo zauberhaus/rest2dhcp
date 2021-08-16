@@ -80,7 +80,7 @@ func (l *LocalIPResolver) GetServerIP() (net.IP, error) {
 
 		return gateway, err
 	} else {
-		return nil, fmt.Errorf("No DHCP server ip")
+		return nil, fmt.Errorf("no DHCP server ip")
 	}
 }
 

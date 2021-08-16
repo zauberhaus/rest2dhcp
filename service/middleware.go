@@ -24,13 +24,10 @@ func (s *serverImpl) ContentMiddleware(next http.Handler) http.Handler {
 		if strings.Contains(content, string(client.JSON)) {
 			ctx := context.WithValue(r.Context(), Content, client.JSON)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if strings.Contains(content, string(client.YAML)) {
-			ctx := context.WithValue(r.Context(), Content, client.YAML)
-			next.ServeHTTP(w, r.WithContext(ctx))
 		} else if strings.Contains(content, string(client.XML)) {
 			ctx := context.WithValue(r.Context(), Content, client.XML)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else if content == "" || content == "*/*" {
+		} else if content == "" || content == "*/*" || strings.Contains(content, string(client.YAML)) {
 			ctx := context.WithValue(r.Context(), Content, client.YAML)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {

@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestLocalIPResolver_GetLocalIP(t *testing.T) {
+func TestLocalIPResolverGetLocalIP(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -91,7 +91,7 @@ func TestLocalIPResolver_GetLocalIP(t *testing.T) {
 	}
 }
 
-func TestLocalIPResolver_GetServerIP(t *testing.T) {
+func TestLocalIPResolverGetServerIP(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -137,7 +137,7 @@ func TestLocalIPResolver_GetServerIP(t *testing.T) {
 	}
 }
 
-func TestStaticIPResolver_GetRelayIP(t *testing.T) {
+func TestStaticIPResolverGetRelayIP(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -182,7 +182,7 @@ func TestNewDefaultConnectioneResolver(t *testing.T) {
 	assert.NotNil(t, resolver)
 }
 
-func TestKubernetesExternalIPResolver_GetRelayIP(t *testing.T) {
+func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 	local := net.IP{1, 1, 1, 1}
 	remote := net.IP{2, 2, 2, 2}
 
@@ -305,7 +305,7 @@ func TestKubernetesExternalIPResolver_GetRelayIP(t *testing.T) {
 	}
 }
 
-func TestKubernetesExternalIPResolver_GetLocalIP(t *testing.T) {
+func TestKubernetesExternalIPResolverGetLocalIP(t *testing.T) {
 	local := net.IP{1, 1, 1, 1}
 	remote := net.IP{2, 2, 2, 2}
 	extern := net.IP{8, 8, 8, 8}

@@ -28,6 +28,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	emptyHostname = "Empty hostname"
+	missingIP     = "Missing ip address"
+	missingMac    = "Missing mac address"
+	invalidIP     = "Not a valid IP4 address"
+)
+
 type Client interface {
 	SetContentType(t ContentType)
 	GetContentType() ContentType
@@ -72,7 +79,7 @@ Lease - request a IP lease for a given hostname and a generated mac address.
 */
 func (c *implClient) Lease(ctx context.Context, hostname string, mac MAC) (*Lease, error) {
 	if hostname == "" {
-		return nil, NewError(http.StatusBadRequest, "Empty hostname")
+		return nil, NewError(http.StatusBadRequest, emptyHostname)
 	}
 
 	url := fmt.Sprintf("%s/ip/%s", c.url, hostname)
@@ -119,19 +126,19 @@ Renew an IP lease for a given hostname, mac and IP address.
 */
 func (c *implClient) Renew(ctx context.Context, hostname string, mac MAC, ip net.IP) (*Lease, error) {
 	if hostname == "" {
-		return nil, NewError(http.StatusBadRequest, "Empty hostname")
+		return nil, NewError(http.StatusBadRequest, emptyHostname)
 	}
 
 	if mac == nil {
-		return nil, NewError(http.StatusBadRequest, "Missing mac address")
+		return nil, NewError(http.StatusBadRequest, missingMac)
 	}
 
 	if ip == nil {
-		return nil, NewError(http.StatusBadRequest, "Missing ip address")
+		return nil, NewError(http.StatusBadRequest, missingIP)
 	}
 
 	if ip.To4() == nil {
-		return nil, NewError(http.StatusBadRequest, "Not a valid IP4 address")
+		return nil, NewError(http.StatusBadRequest, invalidIP)
 	}
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip.To4())
@@ -174,15 +181,15 @@ Release the IP for a given hostname, mac and IP address.
 */
 func (c *implClient) Release(ctx context.Context, hostname string, mac MAC, ip net.IP) error {
 	if hostname == "" {
-		return NewError(http.StatusBadRequest, "Empty hostname")
+		return NewError(http.StatusBadRequest, emptyHostname)
 	}
 
 	if mac == nil {
-		return NewError(http.StatusBadRequest, "Missing mac address")
+		return NewError(http.StatusBadRequest, missingMac)
 	}
 
 	if ip == nil {
-		return NewError(http.StatusBadRequest, "Missing ip address")
+		return NewError(http.StatusBadRequest, missingIP)
 	}
 
 	url := fmt.Sprintf("%s/ip/%s/%v/%v", c.url, hostname, mac, ip)

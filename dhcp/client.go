@@ -31,6 +31,12 @@ import (
 	"github.com/zauberhaus/rest2dhcp/logger"
 )
 
+const (
+	sendMessage    = "Send DHCP %s (%v)"
+	timeoutMessage = "Timeout, wait %v (%v)"
+	retryMessage   = "Retry..."
+)
+
 type DHCPClient interface {
 	Start() chan bool
 	Stop()
@@ -206,7 +212,7 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 				c.store.Remove(lease.Xid)
 				break
 			} else {
-				c.logger.Infof("Timeout, wait %v (%v)", c.retry, xid)
+				c.logger.Infof(timeoutMessage, c.retry, xid)
 				if c.sleep(ctx, c.retry) {
 					l, ok, cancel := c.store.Get(xid)
 					defer cancel()
@@ -216,7 +222,7 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 						lease = l
 						break
 					} else {
-						c.logger.Info("Retry...")
+						c.logger.Info(retryMessage)
 					}
 				} else {
 					break
@@ -241,7 +247,7 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
+				c.logger.Infof(timeoutMessage, c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
 					l, ok, cancel := c.store.Get(lease.Xid)
 					defer cancel()
@@ -251,7 +257,7 @@ func (c *dhcpClientImpl) GetLease(ctx context.Context, hostname string, chaddr n
 						lease2 = l
 						break
 					} else {
-						c.logger.Info("Retry...")
+						c.logger.Info(retryMessage)
 					}
 				} else {
 					break
@@ -312,7 +318,7 @@ func (c *dhcpClientImpl) Renew(ctx context.Context, hostname string, chaddr net.
 				c.store.Remove(lease2.Xid)
 				break
 			} else {
-				c.logger.Infof("Timeout, wait %v (%v)", c.retry, lease.Xid)
+				c.logger.Infof(timeoutMessage, c.retry, lease.Xid)
 				if c.sleep(ctx, c.retry) {
 					l, ok, cancel := c.store.Get(lease.Xid)
 					defer cancel()
@@ -322,7 +328,7 @@ func (c *dhcpClientImpl) Renew(ctx context.Context, hostname string, chaddr net.
 						lease2 = l
 						break
 					} else {
-						c.logger.Info("Retry...")
+						c.logger.Info(retryMessage)
 					}
 				} else {
 					break
@@ -361,7 +367,7 @@ func (c *dhcpClientImpl) Release(ctx context.Context, hostname string, chaddr ne
 		request.RelayAgentIP = relayIP
 		request.ClientIP = ip
 
-		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(layers.DHCPMsgTypeRelease.String()), xid)
+		c.logger.Debugf(sendMessage, strings.ToUpper(layers.DHCPMsgTypeRelease.String()), xid)
 
 		c1, c2 := c.conn.Send(ctx, request)
 		select {
@@ -392,7 +398,7 @@ func (c *dhcpClientImpl) discover(ctx context.Context, xid uint32, conn Connecti
 
 		dhcp.RelayAgentIP = relayIP
 
-		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(layers.DHCPMsgTypeDiscover.String()), xid)
+		c.logger.Debugf(sendMessage, strings.ToUpper(layers.DHCPMsgTypeDiscover.String()), xid)
 
 		c.store.Set(dhcp)
 		c1, c2 := conn.Send(ctx, dhcp.DHCP4)
@@ -423,7 +429,7 @@ func (c *dhcpClientImpl) request(ctx context.Context, msgType layers.DHCPMsgType
 
 		request := lease.GetRequest(msgType, options)
 
-		c.logger.Debugf("Send DHCP %s (%v)", strings.ToUpper(msgType.String()), request.Xid)
+		c.logger.Debugf(sendMessage, strings.ToUpper(msgType.String()), request.Xid)
 		lease.SetMsgType(layers.DHCPMsgTypeRequest)
 
 		c.store.Set(request)
