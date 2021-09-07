@@ -115,9 +115,11 @@ func TestNewServerWithKubernetes(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{
-						"78.78.78.78",
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: "78.78.78.78"},
+						},
 					},
 				},
 			},
@@ -129,8 +131,10 @@ func TestNewServerWithKubernetes(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{},
+					},
 				},
 			},
 		},
@@ -141,8 +145,12 @@ func TestNewServerWithKubernetes(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: "78.78.78.78"},
+						},
+					},
 				},
 			},
 			config: &service.ServerConfig{
