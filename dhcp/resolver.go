@@ -153,7 +153,25 @@ func (r *KubernetesExternalIPResolver) GetRelayIP(ctx context.Context) (net.IP, 
 
 		return lbip, nil
 	} else {
-		ips := result.Spec.ExternalIPs
+		ingress := result.Status.LoadBalancer.Ingress //status.loadBalancer.ingress
+
+		ips := []string{}
+		for _, i := range ingress {
+			if len(i.IP) > 0 {
+				ips = append(ips, i.IP)
+			} else if len(i.Hostname) > 0 {
+				tmp, err := net.LookupIP(i.Hostname)
+				if err == nil {
+					for _, ip := range tmp {
+						ip4 := ip.To4()
+						if ip4 != nil {
+							ips = append(ips, ip4.String())
+						}
+					}
+				}
+			}
+		}
+
 		if len(ips) == 0 {
 			return r.last, fmt.Errorf("service %s/%s has no external IP", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
 		}

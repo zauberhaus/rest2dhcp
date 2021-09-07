@@ -201,25 +201,33 @@ func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 					Name:      "svc001",
 					Namespace: "ns001",
 				},
-				Spec: v1.ServiceSpec{
-					LoadBalancerIP: local.String(),
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: local.String()},
+						},
+					},
 				},
 			},
 			want: local,
 			logs: []int64{0, 0, 0, 1, 0, 0},
 		},
 		{
-			name: "ExternalIPs",
+			name: "LoadBalancerHostname",
 			svc: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "svc001",
 					Namespace: "ns001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{local.String()},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{Hostname: "localhost"},
+						},
+					},
 				},
 			},
-			want: local,
+			want: net.IPv4(127, 0, 0, 1).To4(),
 			logs: []int64{0, 0, 0, 1, 0, 0},
 		},
 		{
@@ -229,8 +237,10 @@ func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 					Name:      "svc001",
 					Namespace: "ns001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{},
+					},
 				},
 			},
 			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
@@ -243,8 +253,13 @@ func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 					Name:      "svc001",
 					Namespace: "ns001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{local.String(), remote.String()},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: local.String()},
+							{IP: remote.String()},
+						},
+					},
 				},
 			},
 			err:  fmt.Errorf("service ns001/svc001 has multiple external IPs"),
@@ -257,8 +272,12 @@ func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 					Name:      "svc001",
 					Namespace: "ns001",
 				},
-				Spec: v1.ServiceSpec{
-					ExternalIPs: []string{"abc"},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: "abc"},
+						},
+					},
 				},
 			},
 			err:  fmt.Errorf("invalid external IP format 'abc' for service ns001/svc001"),
