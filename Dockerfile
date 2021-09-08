@@ -1,21 +1,16 @@
-FROM golang:1.16-alpine AS builder
+FROM alpine as builder
 
-RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep git ca-certificates tzdata busybox-static
-RUN go install github.com/mjibson/esc@v0.2.0
-RUN go install github.com/mdomke/git-semver@latest
+RUN apk update && apk add binutils ca-certificates && rm -rf /var/cache/apk/*
 
-ENV SRC /go/src/github.com/zauberhaus/rest2dhcp
-ENV TZ=Pacific/Auckland
+COPY ./build /build
+COPY detect.sh /
 
-RUN ln -s $SRC /src && mkdir -p /out
-COPY . /src/
-WORKDIR $SRC
+RUN /detect.sh rest2dhcp
 
-RUN go generate ./service/server.go
-RUN go build -ldflags "-X main.gitCommit=`git rev-parse --short HEAD` -X main.buildTime=`date -u -I'seconds'` -X main.treeState=`git diff --stat | grep "" > /dev/null  && echo dirty || echo clean` -X main.tag=`git semver -prefix v` -linkmode external -extldflags -static -s -w" -o /out/rest2dhcp
+FROM alpine  
 
-FROM scratch
-COPY --from=0 /out/rest2dhcp /rest2dhcp
+COPY --from=builder /rest2dhcp /bin/rest2dhcp
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENV CONFIG=
 ENV MODE=
@@ -36,4 +31,8 @@ ENV ACCESS_LOG=
 
 EXPOSE 8080 67/udp 68/udp
 
-CMD ["/rest2dhcp"]
+# Run as UID for nobody since k8s pod securityContext runAsNonRoot can't resolve the user ID:
+# https://github.com/kubernetes/kubernetes/issues/40958
+USER 65534
+
+ENTRYPOINT ["/bin/rest2dhcp"]

@@ -11,7 +11,7 @@ jobs:
   test:
     strategy:
       matrix:
-        goversion: ['1.16']
+        goversion: ['1.17']
         platform: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -23,8 +23,8 @@ jobs:
       uses: actions/checkout@v2
     - name: Tests 
       run: |
-        go get github.com/mjibson/esc
-        go get github.com/jandelgado/gcov2lcov
+        go install github.com/mjibson/esc@latest
+        go install github.com/jandelgado/gcov2lcov@latest
         go generate ./service/server.go
         go test -v -race -timeout=30s ./... 
         go test -v -covermode=count -coverprofile=coverage.out ./...
