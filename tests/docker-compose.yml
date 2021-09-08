@@ -32,7 +32,7 @@ services:
     image: rest2dhcp
     build: 
       context: ..
-      dockerfile: ./Dockerfile.alpine
+      dockerfile: ./Dockerfile
     environment:
       - VERBOSE=true
       - DHCP_SERVER=dhcpd
@@ -51,7 +51,7 @@ services:
     image: rest2dhcp
     build: 
       context: ..
-      dockerfile: ./Dockerfile.alpine
+      dockerfile: ./Dockerfile
     environment:
       - VERBOSE=true
       - DHCP_SERVER=dnsmasq
@@ -70,7 +70,7 @@ services:
     image: rest2dhcp
     build: 
       context: ..
-      dockerfile: ./Dockerfile.alpine
+      dockerfile: ./Dockerfile
     environment:
       - VERBOSE=true
       - DHCP_SERVER=udhcpd

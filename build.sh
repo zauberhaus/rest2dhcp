@@ -1,19 +1,14 @@
 #!/bin/sh
 
-if ! which esc > /dev/null ; then 
-  P=`pwd`
-  cd ..
-  go get github.com/mjibson/esc
-  go get github.com/mdomke/git-semver
-  cd "$P"
+if [ ! -f "$GOPATH/bin/esc" ] ; then
+    echo "Install esc"
+    go install github.com/mjibson/esc@v0.2.0
 fi
 
 DIFF=`git diff --stat`
-VERSION=`git semver -prefix v`
-NOW=`date +%FT%T.%3N%:z`
+VERSION=`git describe --tags --always --dirty`
+NOW=`date`
 COMMIT=`git rev-parse --short HEAD`
-
-UPX=`which upx`
 
 if test ! -z "$DIFF"; then
   STATE='dirty'
@@ -21,7 +16,14 @@ else
   STATE='clean'
 fi
 
+mkdir -p ./build
 
-go generate ./...
-CGO_ENABLED=0 go build -ldflags "-X main.gitCommit=$COMMIT -X main.buildTime=$NOW -X main.treeState=$STATE -X main.tag=$VERSION $FLAGS"
-git describe --tags
+if [ ! -f "./service/doc.go" ] ; then
+    echo "Generate embedded files"
+    go generate ./service/server.go
+fi
+
+FLAGS="-X 'main.gitCommit=$COMMIT' -X 'main.buildTime=$NOW' -X 'main.treeState=$STATE' -X 'main.tag=$VERSION' -w -s"
+
+CGO_ENABLED=0 go build -ldflags "$FLAGS"
+echo "Version: $VERSION"
