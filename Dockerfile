@@ -31,8 +31,4 @@ ENV ACCESS_LOG=
 
 EXPOSE 8080 67/udp 68/udp
 
-# Run as UID for nobody since k8s pod securityContext runAsNonRoot can't resolve the user ID:
-# https://github.com/kubernetes/kubernetes/issues/40958
-USER 65534
-
 ENTRYPOINT ["/bin/rest2dhcp"]
