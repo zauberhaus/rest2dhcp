@@ -63,8 +63,8 @@ func TestNewServer(t *testing.T) {
 
 	dhcp := mock.NewMockDHCPClient(ctrl)
 
-	dhcp.EXPECT().Start().DoAndReturn(func() chan bool {
-		rc := make(chan bool)
+	dhcp.EXPECT().Start().DoAndReturn(func() chan error {
+		rc := make(chan error)
 		close(rc)
 		return rc
 	})
@@ -80,7 +80,7 @@ func TestNewServer(t *testing.T) {
 	version := client.NewVersion("now", "123456", "0001", "dirty")
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 1)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 1)
 
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
@@ -110,7 +110,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 	}{
 		{
 			name: "ok",
-			msgs: []int64{0, 0, 0, 4, 1, 0, 0, 1},
+			msgs: []int64{0, 0, 0, 5, 1, 0, 0, 1},
 			svc: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
@@ -126,7 +126,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 		},
 		{
 			name: "missing exernal ip",
-			msgs: []int64{1, 1, 0, 3, 1, 0, 0, 1},
+			msgs: []int64{1, 1, 0, 4, 1, 0, 0, 1},
 			svc: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
@@ -140,7 +140,7 @@ func TestNewServerWithKubernetes(t *testing.T) {
 		},
 		{
 			name: "not existing config file",
-			msgs: []int64{0, 0, 0, 3, 1, 0, 0, 1},
+			msgs: []int64{0, 0, 0, 4, 1, 0, 0, 1},
 			svc: &v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "svc001",
@@ -185,8 +185,8 @@ func TestNewServerWithKubernetes(t *testing.T) {
 
 			dhcpClient := mock.NewMockDHCPClient(ctrl)
 
-			dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
-				rc := make(chan bool)
+			dhcpClient.EXPECT().Start().DoAndReturn(func() chan error {
+				rc := make(chan error)
 				close(rc)
 				return rc
 			})
@@ -246,8 +246,8 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 
 	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
-	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
-		rc := make(chan bool)
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan error {
+		rc := make(chan error)
 		close(rc)
 		return rc
 	})
@@ -294,7 +294,7 @@ func TestNewServerWithKubernetesFailed(t *testing.T) {
 	version := client.NewVersion("now", "123456", "0001", "dirty")
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 1, 1, 0, 3, 1, 0, 0, 1)
+	defer logger.Assert(t, 1, 1, 0, 4, 1, 0, 0, 1)
 
 	server := service.NewServer(logger)
 	assert.NotNil(t, server)
@@ -324,7 +324,7 @@ func TestServer_Requests(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 9)
+	defer logger.Assert(t, 0, 0, 0, 5, 1, 0, 0, 9)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -456,7 +456,7 @@ func TestServer_GetLease(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 5)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 5)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -596,7 +596,7 @@ func TestServer_GetLease_Invalid(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 2)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -673,7 +673,7 @@ func TestServer_Renew_Invalid(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 3)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -758,7 +758,7 @@ func TestServer_Release_Invalid(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 3)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 3)
 	server, _, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -838,12 +838,12 @@ func TestServer_Release_Invalid(t *testing.T) {
 
 }
 
-func TestServer_Renew_(t *testing.T) {
+func TestServer_Renew(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 4)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 4)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -963,7 +963,7 @@ func TestServer_Release(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 1, 0, 0, 2)
+	defer logger.Assert(t, 0, 0, 0, 4, 1, 0, 0, 2)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -1052,8 +1052,8 @@ func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (service
 
 	port := getPort()
 
-	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
-		rc := make(chan bool)
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan error {
+		rc := make(chan error)
 		close(rc)
 		return rc
 	})

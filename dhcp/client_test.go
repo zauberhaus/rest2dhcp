@@ -40,11 +40,11 @@ func TestStartStop(t *testing.T) {
 	remote := net.IP{2, 2, 2, 2}
 
 	conn := mock.NewMockConnection(ctrl)
-	ipResolver := mock.NewMockIPResolver(local, remote, local)
+	ipResolver := mock.NewMockIPResolver(local, remote, local, local)
 	connResolver := mock.NewMockConnectionResolver(conn)
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 6, 5, 0, 0)
+	defer logger.Assert(t, 0, 0, 0, 7, 5, 0, 0)
 
 	conn.EXPECT().Receive(gomock.Any()).DoAndReturn(func(ctx context.Context) (chan *dhcp.DHCP4, chan error) {
 		chan1 := make(chan *dhcp.DHCP4)
@@ -73,11 +73,11 @@ func TestGetLease(t *testing.T) {
 	remote := net.IP{2, 2, 2, 2}
 
 	conn := mock.NewMockConnection(ctrl)
-	ipResolver := mock.NewMockIPResolver(local, remote, local)
+	ipResolver := mock.NewMockIPResolver(local, remote, local, local)
 	connResolver := mock.NewMockConnectionResolver(conn)
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 6, 22, 0, 8)
+	defer logger.Assert(t, 0, 0, 0, 7, 22, 0, 8)
 
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
@@ -177,11 +177,11 @@ func TestGetLeaseSlow(t *testing.T) {
 	remote := net.IP{2, 2, 2, 2}
 
 	conn := mock.NewMockConnection(ctrl)
-	ipResolver := mock.NewMockIPResolver(local, remote, local)
+	ipResolver := mock.NewMockIPResolver(local, remote, local, local)
 	connResolver := mock.NewMockConnectionResolver(conn)
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 9, 19, 0, 8)
+	defer logger.Assert(t, 0, 0, 0, 10, 19, 0, 8)
 
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
@@ -274,10 +274,10 @@ func TestGetLeaseVerySlow(t *testing.T) {
 	remote := net.IP{2, 2, 2, 2}
 
 	conn := mock.NewMockConnection(ctrl)
-	ipResolver := mock.NewMockIPResolver(local, remote, local)
+	ipResolver := mock.NewMockIPResolver(local, remote, local, local)
 	connResolver := mock.NewMockConnectionResolver(conn)
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 12, 25, 0, 11)
+	defer logger.Assert(t, 0, 0, 0, 13, 25, 0, 11)
 
 	chan1 := make(chan *dhcp.DHCP4)
 	chan2 := make(chan error)
@@ -374,11 +374,11 @@ func TestRenew(t *testing.T) {
 	remote := net.IP{2, 2, 2, 2}
 
 	conn := mock.NewMockConnection(ctrl)
-	ipResolver := mock.NewMockIPResolver(local, remote, local)
+	ipResolver := mock.NewMockIPResolver(local, remote, local, local)
 	connResolver := mock.NewMockConnectionResolver(conn)
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 3, 0, 6, 11, 0, 5)
+	defer logger.Assert(t, 0, 3, 0, 7, 11, 0, 5)
 
 	chan1 := make(chan *dhcp.DHCP4, 10)
 	chan2 := make(chan error)

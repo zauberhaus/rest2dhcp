@@ -6,6 +6,7 @@ package mock
 
 import (
 	context "context"
+	net "net"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
@@ -65,6 +66,21 @@ func (m *MockKubeClient) GetConfigMap(ctx context.Context, namespace, name strin
 func (mr *MockKubeClientMockRecorder) GetConfigMap(ctx, namespace, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConfigMap", reflect.TypeOf((*MockKubeClient)(nil).GetConfigMap), ctx, namespace, name)
+}
+
+// GetExternalIP mocks base method.
+func (m *MockKubeClient) GetExternalIP(ctx context.Context, namespace, service string) (net.IP, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExternalIP", ctx, namespace, service)
+	ret0, _ := ret[0].(net.IP)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExternalIP indicates an expected call of GetExternalIP.
+func (mr *MockKubeClientMockRecorder) GetExternalIP(ctx, namespace, service interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExternalIP", reflect.TypeOf((*MockKubeClient)(nil).GetExternalIP), ctx, namespace, service)
 }
 
 // GetService mocks base method.

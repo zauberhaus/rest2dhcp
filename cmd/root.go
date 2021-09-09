@@ -165,7 +165,8 @@ func (r *RootCommand) init() {
 	}
 
 	r.Flags().StringVarP(&r.kube.Namespace, "namespace", "n", "default", "Kubernetes namespace")
-	r.Flags().StringVarP(&r.kube.Service, "service", "K", "", "Kubernetes service name")
+	r.Flags().StringVarP(&r.kube.Service, "service", "K", "", "Kubernetes relay service name")
+	r.Flags().StringVarP(&r.kube.WebService, "web-service", "W", "", "Kubernetes web service name")
 }
 
 func (r *RootCommand) initializeConfig(cmd *cobra.Command) error {

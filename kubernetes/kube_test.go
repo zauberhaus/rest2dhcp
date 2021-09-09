@@ -18,6 +18,8 @@ package kubernetes_test
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -251,6 +253,324 @@ func TestKubeClientImpl_Patch(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, a, "123")
 
+}
+
+func TestKubeClientImpl_PatchFailed(t *testing.T) {
+	logger := mock.NewTestLogger()
+	clientset := testclient.NewSimpleClientset()
+
+	ctx := context.Background()
+
+	ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns001",
+		},
+	}, metav1.CreateOptions{})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, ns)
+
+	svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "svc001",
+		},
+	}, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	assert.NotNil(t, svc)
+
+	patch := kubernetes.NewPatch()
+	patch.SetAnnotation(svc, "test", "123")
+
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
+	setClientSet(k, clientset)
+
+	result, err := k.PatchService(ctx, ns.GetObjectMeta().GetName(), "abc", patch)
+	assert.Error(t, fmt.Errorf("services \"abc\" not found"), err)
+	assert.Nil(t, result)
+}
+
+func TestKubeClientImpl_GetEXternalIP(t *testing.T) {
+	local := net.IP{1, 1, 1, 1}
+	remote := net.IP{2, 2, 2, 2}
+
+	tests := []struct {
+		name    string
+		svc     *v1.Service
+		svc_err error
+		want    net.IP
+		logs    []int64
+		err     error
+	}{
+		{
+			name: "LoadBalancerIP",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: local.String()},
+						},
+					},
+				},
+			},
+			want: local,
+			logs: []int64{0, 0, 0, 1, 0, 0},
+		},
+		{
+			name: "LoadBalancerHostname",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{Hostname: "localhost"},
+						},
+					},
+				},
+			},
+			want: net.IP{127, 0, 0, 1},
+			logs: []int64{0, 0, 0, 1, 0, 0},
+		},
+		{
+			name: "No ExternalIPs",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{},
+					},
+				},
+			},
+			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "Multiple ExternalIPs",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: local.String()},
+							{IP: remote.String()},
+						},
+					},
+				},
+			},
+			err:  fmt.Errorf("service ns001/svc001 has multiple external IPs"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "Invalid ExternalIPs",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{
+						Ingress: []v1.LoadBalancerIngress{
+							{IP: "abc"},
+						},
+					},
+				},
+			},
+			err:  fmt.Errorf("invalid external IP format 'abc' for service ns001/svc001"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "No Ingress",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{
+					LoadBalancer: v1.LoadBalancerStatus{},
+				},
+			},
+			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "No LoadBalancer",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+				Status: v1.ServiceStatus{},
+			},
+			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "No Status",
+			svc: &v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "svc001",
+					Namespace: "ns001",
+				},
+			},
+			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
+			logs: []int64{0, 0, 0, 0, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			namespace := tt.svc.ObjectMeta.Namespace
+
+			logger := mock.NewTestLogger()
+			defer logger.Assert(t, tt.logs...)
+
+			clientset := testclient.NewSimpleClientset()
+			ctx := context.Background()
+
+			ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespace,
+				},
+			}, metav1.CreateOptions{})
+
+			assert.NoError(t, err)
+			assert.NotNil(t, ns)
+
+			svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, tt.svc, metav1.CreateOptions{})
+			assert.NoError(t, err)
+			assert.NotNil(t, svc)
+
+			k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+			assert.NoError(t, err)
+			setClientSet(k, clientset)
+
+			ip, err := k.GetExternalIP(ctx, namespace, tt.svc.ObjectMeta.Name)
+			if tt.err == nil {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, ip.To4())
+			} else {
+				assert.EqualError(t, err, tt.err.Error())
+			}
+		})
+	}
+}
+
+func TestKubeClientImpl_GetExternalIPCache(t *testing.T) {
+	local := net.IP{1, 1, 1, 1}
+	remote := net.IP{2, 2, 2, 2}
+
+	o := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "svc001",
+			Namespace: "ns001",
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{
+				Ingress: []v1.LoadBalancerIngress{
+					{IP: local.String()},
+				},
+			},
+		},
+	}
+
+	namespace := o.ObjectMeta.Namespace
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 1, 0, 0)
+
+	clientset := testclient.NewSimpleClientset()
+	ctx := context.Background()
+
+	ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}, metav1.CreateOptions{})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, ns)
+
+	svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, o, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	assert.NotNil(t, svc)
+
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
+	setClientSet(k, clientset)
+
+	ip, err := k.GetExternalIP(ctx, namespace, o.ObjectMeta.Name)
+	assert.NoError(t, err)
+	assert.Equal(t, local, ip.To4())
+
+	svc.Status.LoadBalancer.Ingress = []v1.LoadBalancerIngress{
+		{
+			IP: remote.String(),
+		},
+	}
+
+	ip, err = k.GetExternalIP(ctx, namespace, o.ObjectMeta.Name)
+	assert.NoError(t, err)
+	assert.Equal(t, local, ip.To4())
+}
+
+func TestKubeClientImpl_GetExternalIPServiceNotFound(t *testing.T) {
+	local := net.IP{1, 1, 1, 1}
+
+	o := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "svc001",
+			Namespace: "ns001",
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{
+				Ingress: []v1.LoadBalancerIngress{
+					{IP: local.String()},
+				},
+			},
+		},
+	}
+
+	namespace := o.ObjectMeta.Namespace
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
+
+	clientset := testclient.NewSimpleClientset()
+	ctx := context.Background()
+
+	ns, err := clientset.CoreV1().Namespaces().Create(ctx, &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}, metav1.CreateOptions{})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, ns)
+
+	svc, err := clientset.CoreV1().Services(ns.ObjectMeta.Name).Create(ctx, o, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	assert.NotNil(t, svc)
+
+	k, err := kubernetes.NewKubeClient("./testdata/kube.config", logger)
+	assert.NoError(t, err)
+	setClientSet(k, clientset)
+
+	ip, err := k.GetExternalIP(ctx, namespace, "abc")
+	assert.Error(t, fmt.Errorf("esolve external IP from ns001/abc: services \"abc\" not found"), err)
+	assert.Nil(t, ip)
 }
 
 func TestKubeClientImpl_Watch(t *testing.T) {

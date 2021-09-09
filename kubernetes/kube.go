@@ -3,6 +3,8 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/zauberhaus/rest2dhcp/logger"
 	v1 "k8s.io/api/core/v1"
@@ -15,6 +17,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/ReneKroon/ttlcache/v2"
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
@@ -25,11 +29,14 @@ type KubeClient interface {
 	GetConfigMap(ctx context.Context, namespace string, name string) (*v1.ConfigMap, error)
 	PatchService(ctx context.Context, namespace string, name string, patch *Patch) (metav1.Object, error)
 	WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc)
+	GetExternalIP(ctx context.Context, namespace string, service string) (net.IP, error)
 }
 
 type kubeClientImpl struct {
 	client kubernetes.Interface
 	logger logger.Logger
+
+	cache ttlcache.SimpleCache
 }
 
 type patch struct {
@@ -37,14 +44,6 @@ type patch struct {
 	Path  string `json:"path"`
 	Value string `json:"value"`
 }
-
-/*
-type patchUint64 struct {
-	Op    string `json:"op"`
-	Path  string `json:"path"`
-	Value uint64 `json:"value"`
-}
-*/
 
 type patchStruct struct {
 	Op    string   `json:"op"`
@@ -70,9 +69,13 @@ func NewKubeClient(kubeconfig string, logger logger.Logger) (KubeClient, error) 
 		return nil, err
 	}
 
+	cache := ttlcache.NewCache()
+	cache.SetTTL(60 * time.Second)
+
 	return &kubeClientImpl{
 		client: clientset,
 		logger: logger,
+		cache:  cache,
 	}, nil
 }
 
@@ -136,6 +139,53 @@ func (k *kubeClientImpl) PatchService(ctx context.Context, namespace string, nam
 	}
 
 	return nil, err
+}
+
+func (k *kubeClientImpl) GetExternalIP(ctx context.Context, namespace string, service string) (net.IP, error) {
+	if value, exists := k.cache.Get(namespace + "/" + service); exists == nil {
+		return value.(net.IP), nil
+	}
+
+	result, err := k.GetService(ctx, namespace, service)
+	if err != nil {
+		return nil, fmt.Errorf("resolve external IP from %s/%s: %v", namespace, service, err)
+	}
+
+	ingress := result.Status.LoadBalancer.Ingress
+	ips := []string{}
+	for _, i := range ingress {
+		if len(i.IP) > 0 {
+			ips = append(ips, i.IP)
+		} else if len(i.Hostname) > 0 {
+			tmp, err := net.LookupIP(i.Hostname)
+			if err == nil {
+				for _, ip := range tmp {
+					ip4 := ip.To4()
+					if ip4 != nil {
+						ips = append(ips, ip4.String())
+					}
+				}
+			}
+		}
+	}
+
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("service %s/%s has no external IP", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+	}
+
+	if len(ips) > 1 {
+		return nil, fmt.Errorf("service %s/%s has multiple external IPs", result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+	}
+
+	ip := net.ParseIP(ips[0])
+	if ip != nil {
+		k.logger.Infof("Detect Kubernetes external service ip %v (%s/%s)", ip, result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+		k.cache.Set(namespace+"/"+service, ip)
+
+		return ip, nil
+	} else {
+		return nil, fmt.Errorf("invalid external IP format '%s' for service %v/%v", ips[0], result.ObjectMeta.Namespace, result.ObjectMeta.Name)
+	}
 }
 
 func (k *kubeClientImpl) WatchService(ctx context.Context) (chan [2]metav1.Object, context.CancelFunc) {

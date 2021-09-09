@@ -161,15 +161,25 @@ func (s *serverImpl) init(ctx context.Context, config *ServerConfig, version *cl
 	}
 
 	s.port = config.Port
-
-	if config.BaseURL == "" {
-		config.BaseURL = fmt.Sprintf("http://%v:%v", s.hostname, s.port)
-	}
-
 	s.config = config
 	s.Addr = fmt.Sprintf("%v:%v", config.Hostname, config.Port)
 
 	var resolver dhcp.IPResolver = s.getIPResolver(ctx, config)
+
+	if config.BaseURL == "" {
+		if resolver != nil {
+			ip, err := resolver.GetWebServiceIP(ctx)
+			if err != nil {
+				s.logger.Errorf("Error get web server IP: %v", err)
+			}
+
+			if ip != nil {
+				config.BaseURL = fmt.Sprintf("%v:%v", ip, s.port)
+			} else {
+				config.BaseURL = fmt.Sprintf("%v:%v", s.hostname, s.port)
+			}
+		}
+	}
 
 	if s.client == nil {
 		s.client = dhcp.NewClient(resolver, nil, config.Mode, config.DHCPTimeout, config.Retry, s.logger)
@@ -238,7 +248,10 @@ func (s *serverImpl) Start(ctx context.Context) chan bool {
 	rc := make(chan bool, 1)
 
 	go func() {
-		<-s.client.Start()
+		err := <-s.client.Start()
+		if err != nil {
+			s.logger.Fatalf("Start server failed: %s", err)
+		}
 
 		go func() {
 			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -258,6 +271,7 @@ func (s *serverImpl) Start(ctx context.Context) chan bool {
 
 				_, err := http.Get(url)
 				if err == nil {
+					s.logger.Infof("Web service base url: %v", s.config.BaseURL)
 					s.logger.Info("Server listen on ", s.Addr)
 					close(rc)
 					break
@@ -434,7 +448,7 @@ func (s *serverImpl) response(ctx context.Context, query *Query, w http.Response
 }
 
 func (s *serverImpl) getIPResolver(ctx context.Context, config *ServerConfig) dhcp.IPResolver {
-	if config.KubeConfig != nil && len(config.KubeConfig.Service) > 0 {
+	if config.KubeConfig != nil && (len(config.KubeConfig.Service) > 0 || len(config.KubeConfig.WebService) > 0) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
@@ -454,19 +468,19 @@ func (s *serverImpl) getIPResolver(ctx context.Context, config *ServerConfig) dh
 				config.Relay = extIP
 				return resolver
 			} else {
-				s.logger.Errorf("Auto detect relay IP from Kubernetes failed: %v", err)
+				s.logger.Errorf("Auto detect external IP from Kubernetes failed: %v", err)
 				if config.Relay != nil {
-					return dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, s.logger)
+					return dhcp.NewStaticIPResolver(config.Local, config.Relay, config.Relay, config.Local, s.logger)
 				} else {
 					s.logger.Fatalf("No valid replay IP")
 					return nil
 				}
 			}
 		} else {
-			return dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
+			return dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, config.Local, s.logger)
 		}
 	} else {
-		return dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, s.logger)
+		return dhcp.NewStaticIPResolver(config.Local, config.Remote, config.Relay, config.Local, s.logger)
 	}
 }
 

@@ -28,8 +28,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/zauberhaus/rest2dhcp/dhcp"
 	"github.com/zauberhaus/rest2dhcp/mock"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestLocalIPResolverGetLocalIP(t *testing.T) {
@@ -47,6 +45,7 @@ func TestLocalIPResolverGetLocalIP(t *testing.T) {
 		local  net.IP
 		remote net.IP
 		relay  net.IP
+		web    net.IP
 		args   args
 		want   net.IP
 	}{
@@ -73,7 +72,7 @@ func TestLocalIPResolverGetLocalIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, logger)
+			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, tt.web, logger)
 			got, err := l.GetLocalIP(tt.args.remote)
 			assert.NoError(t, err)
 			if tt.want != nil {
@@ -103,6 +102,7 @@ func TestLocalIPResolverGetServerIP(t *testing.T) {
 		local  net.IP
 		remote net.IP
 		relay  net.IP
+		web    net.IP
 	}{
 		{
 			name:   "GetServerIP (variable)",
@@ -118,7 +118,7 @@ func TestLocalIPResolverGetServerIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, logger)
+			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, tt.web, logger)
 			got, err := l.GetServerIP()
 			if tt.remote != nil {
 				assert.NoError(t, err)
@@ -142,13 +142,14 @@ func TestStaticIPResolverGetRelayIP(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 1, 0, 0)
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
 
 	tests := []struct {
 		name   string
 		local  net.IP
 		remote net.IP
 		relay  net.IP
+		web    net.IP
 	}{
 		{
 			name:   "GetServerIP (variable)",
@@ -165,11 +166,53 @@ func TestStaticIPResolverGetRelayIP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, logger)
+			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, tt.web, logger)
 			got, err := l.GetRelayIP(ctx)
 			assert.NoError(t, err)
 			if tt.relay != nil {
 				assert.Equal(t, tt.relay, got)
+			} else {
+				assert.Equal(t, tt.local, got)
+			}
+		})
+	}
+}
+
+func TestStaticIPResolverGetWebServiceIP(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
+
+	tests := []struct {
+		name   string
+		local  net.IP
+		remote net.IP
+		relay  net.IP
+		web    net.IP
+	}{
+		{
+			name:   "GetServerIP (variable)",
+			local:  net.IP{1, 1, 1, 1},
+			remote: net.IP{2, 2, 2, 2},
+			relay:  net.IP{3, 3, 3, 3},
+			web:    net.IP{4, 4, 4, 4},
+		},
+		{
+			name:   "GetServerIP (route)",
+			local:  net.IP{1, 1, 1, 1},
+			remote: net.IP{2, 2, 2, 2},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			l := dhcp.NewStaticIPResolver(tt.local, tt.remote, tt.relay, tt.web, logger)
+			got, err := l.GetWebServiceIP(ctx)
+			assert.NoError(t, err)
+			if tt.web != nil {
+				assert.Equal(t, tt.web, got)
 			} else {
 				assert.Equal(t, tt.local, got)
 			}
@@ -186,142 +229,61 @@ func TestKubernetesExternalIPResolverGetRelayIP(t *testing.T) {
 	local := net.IP{1, 1, 1, 1}
 	remote := net.IP{2, 2, 2, 2}
 
-	tests := []struct {
-		name    string
-		svc     *v1.Service
-		svc_err error
-		want    net.IP
-		logs    []int64
-		err     error
-	}{
-		{
-			name: "LoadBalancerIP",
-			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "svc001",
-					Namespace: "ns001",
-				},
-				Status: v1.ServiceStatus{
-					LoadBalancer: v1.LoadBalancerStatus{
-						Ingress: []v1.LoadBalancerIngress{
-							{IP: local.String()},
-						},
-					},
-				},
-			},
-			want: local,
-			logs: []int64{0, 0, 0, 1, 0, 0},
-		},
-		{
-			name: "LoadBalancerHostname",
-			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "svc001",
-					Namespace: "ns001",
-				},
-				Status: v1.ServiceStatus{
-					LoadBalancer: v1.LoadBalancerStatus{
-						Ingress: []v1.LoadBalancerIngress{
-							{Hostname: "localhost"},
-						},
-					},
-				},
-			},
-			want: net.IPv4(127, 0, 0, 1).To4(),
-			logs: []int64{0, 0, 0, 1, 0, 0},
-		},
-		{
-			name: "No ExternalIPs",
-			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "svc001",
-					Namespace: "ns001",
-				},
-				Status: v1.ServiceStatus{
-					LoadBalancer: v1.LoadBalancerStatus{
-						Ingress: []v1.LoadBalancerIngress{},
-					},
-				},
-			},
-			err:  fmt.Errorf("service ns001/svc001 has no external IP"),
-			logs: []int64{0, 0, 0, 0, 0, 0},
-		},
-		{
-			name: "Multiple ExternalIPs",
-			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "svc001",
-					Namespace: "ns001",
-				},
-				Status: v1.ServiceStatus{
-					LoadBalancer: v1.LoadBalancerStatus{
-						Ingress: []v1.LoadBalancerIngress{
-							{IP: local.String()},
-							{IP: remote.String()},
-						},
-					},
-				},
-			},
-			err:  fmt.Errorf("service ns001/svc001 has multiple external IPs"),
-			logs: []int64{0, 0, 0, 0, 0, 0},
-		},
-		{
-			name: "Invalid ExternalIPs",
-			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "svc001",
-					Namespace: "ns001",
-				},
-				Status: v1.ServiceStatus{
-					LoadBalancer: v1.LoadBalancerStatus{
-						Ingress: []v1.LoadBalancerIngress{
-							{IP: "abc"},
-						},
-					},
-				},
-			},
-			err:  fmt.Errorf("invalid external IP format 'abc' for service ns001/svc001"),
-			logs: []int64{0, 0, 0, 0, 0, 0},
-		},
-		{
-			name:    "service not found",
-			svc_err: fmt.Errorf("service not found"),
-			err:     fmt.Errorf("resolve external IP from ns001/svc001: service not found"),
-			logs:    []int64{0, 0, 0, 0, 0, 0},
-		},
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
+
+	config := &dhcp.KubeServiceConfig{
+		Config:    "./testdata/config.yaml",
+		Namespace: "ns001",
+		Service:   "svc001",
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
 
-			logger := mock.NewTestLogger()
-			defer logger.Assert(t, tt.logs...)
+	client := mock.NewMockKubeClient(ctrl)
 
-			config := &dhcp.KubeServiceConfig{
-				Config:    "./testdata/config.yaml",
-				Namespace: "ns001",
-				Service:   "svc001",
-			}
+	client.EXPECT().
+		GetExternalIP(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(local, nil)
 
-			client := mock.NewMockKubeClient(ctrl)
+	r := dhcp.NewKubernetesExternalIPResolver(local, remote, config, client, logger)
+	ctx := context.Background()
 
-			client.EXPECT().
-				GetService(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(tt.svc, tt.svc_err)
+	ip, err := r.GetRelayIP(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, local, ip.To4())
+}
 
-			r := dhcp.NewKubernetesExternalIPResolver(local, remote, config, client, logger)
-			ctx := context.Background()
+func TestKubernetesExternalIPResolverGetWebIP(t *testing.T) {
+	local := net.IP{1, 1, 1, 1}
+	remote := net.IP{2, 2, 2, 2}
 
-			ip, err := r.GetRelayIP(ctx)
-			if tt.err == nil {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.want, ip.To4())
-			} else {
-				assert.EqualError(t, err, tt.err.Error())
-			}
-		})
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	logger := mock.NewTestLogger()
+	defer logger.Assert(t, 0, 0, 0, 0, 0, 0)
+
+	config := &dhcp.KubeServiceConfig{
+		Config:     "./testdata/config.yaml",
+		Namespace:  "ns001",
+		Service:    "svc001",
+		WebService: "svc002",
 	}
+
+	client := mock.NewMockKubeClient(ctrl)
+
+	client.EXPECT().
+		GetExternalIP(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(local, nil)
+
+	r := dhcp.NewKubernetesExternalIPResolver(local, remote, config, client, logger)
+	ctx := context.Background()
+
+	ip, err := r.GetWebServiceIP(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, local, ip.To4())
 }
 
 func TestKubernetesExternalIPResolverGetLocalIP(t *testing.T) {

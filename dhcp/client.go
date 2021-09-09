@@ -38,7 +38,7 @@ const (
 )
 
 type DHCPClient interface {
-	Start() chan bool
+	Start() chan error
 	Stop()
 
 	GetLease(ctx context.Context, hostname string, chaddr net.HardwareAddr) chan *Lease
@@ -112,6 +112,7 @@ func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType Co
 		}
 
 		logger.Infof("DHCP server: %v", client.remote)
+		logger.Infof("DHCP relay: %v", client.relay)
 
 		client.mode = connType
 		client.conn = connResolver.GetConnection(local, remote, connType, logger)
@@ -131,8 +132,8 @@ func NewClient(resolver IPResolver, connResolver ConnectionResolver, connType Co
 	return &client
 }
 
-func (c *dhcpClientImpl) Start() chan bool {
-	return c.Run(func(ctx context.Context) bool {
+func (c *dhcpClientImpl) Start() chan error {
+	return c.Run(func(ctx context.Context) (bool, error) {
 		c.store.Run(ctx)
 
 		for {
@@ -141,7 +142,7 @@ func (c *dhcpClientImpl) Start() chan bool {
 			case err := <-c2:
 				c.logger.Errorf("Receive error: %v", err)
 			case <-ctx.Done():
-				return false
+				return false, nil
 			case dhcp := <-c3:
 				if dhcp != nil {
 					c.processDHCPReponse(dhcp)

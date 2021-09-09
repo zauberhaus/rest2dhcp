@@ -62,7 +62,7 @@ func TestClientVersion(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 4)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 0, 4)
 
 	server, _, cancel := start(t, ctrl, logger)
 
@@ -117,7 +117,7 @@ func TestClient(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 3, 10)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 3, 10)
 
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
@@ -280,7 +280,7 @@ func TestClientGetLeaseFail(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 1)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 0, 1)
 
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
@@ -448,7 +448,7 @@ func TestClientReleaseError(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 1)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 0, 1)
 	server, dhcpClient, cancel := start(t, ctrl, logger)
 
 	tests := []struct {
@@ -494,7 +494,7 @@ func TestClientInvalidLease(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 2)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 0, 2)
 
 	server, _, cancel := start(t, ctrl, logger)
 
@@ -549,7 +549,7 @@ func TestClientInvalidRenew(t *testing.T) {
 	defer ctrl.Finish()
 
 	logger := mock.NewTestLogger()
-	defer logger.Assert(t, 0, 0, 0, 3, 2, 0, 0, 2)
+	defer logger.Assert(t, 0, 0, 0, 4, 2, 0, 0, 2)
 
 	server, _, cancel := start(t, ctrl, logger)
 	port := server.Port()
@@ -665,8 +665,8 @@ func TestClientError(t *testing.T) {
 func start(t *testing.T, ctrl *gomock.Controller, logger logger.Logger) (service.Server, *mock.MockDHCPClient, context.CancelFunc) {
 	dhcpClient := mock.NewMockDHCPClient(ctrl)
 
-	dhcpClient.EXPECT().Start().DoAndReturn(func() chan bool {
-		rc := make(chan bool)
+	dhcpClient.EXPECT().Start().DoAndReturn(func() chan error {
+		rc := make(chan error)
 		close(rc)
 		return rc
 	})

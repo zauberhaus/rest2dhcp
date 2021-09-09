@@ -129,9 +129,10 @@ func (c ConnectionType) MarshalXML(e *xml.Encoder, start xml.StartElement) error
 
 // KubeServiceConfig is the optional configuration to read the relay ip
 type KubeServiceConfig struct {
-	Config    string `yaml:"config,omitempty" json:"config,omitempty" xml:"config,omitempty"`
-	Namespace string `yaml:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
-	Service   string `yaml:"service,omitempty" json:"service,omitempty" xml:"service,omitempty"`
+	Config     string `yaml:"config,omitempty" json:"config,omitempty" xml:"config,omitempty"`
+	Namespace  string `yaml:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
+	Service    string `yaml:"service,omitempty" json:"service,omitempty" xml:"service,omitempty"`
+	WebService string `yaml:"web_service,omitempty" json:"web_service,omitempty" xml:"web_service,omitempty"`
 }
 
 func (c *KubeServiceConfig) String() string {

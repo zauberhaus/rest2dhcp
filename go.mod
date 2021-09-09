@@ -3,6 +3,7 @@ module github.com/zauberhaus/rest2dhcp
 go 1.16
 
 require (
+	github.com/ReneKroon/ttlcache/v2 v2.8.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19

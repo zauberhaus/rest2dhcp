@@ -9,7 +9,7 @@ type Process struct {
 	name   string
 	ctx    context.Context
 	cancel context.CancelFunc
-	done   chan bool
+	done   chan error
 	init   func(ctx context.Context) error
 	close  func(ctx context.Context) error
 	logger logger.Logger
@@ -20,21 +20,22 @@ func (p *Process) Init(name string, init func(ctx context.Context) error, close 
 	p.ctx = ctx
 	p.cancel = cancel
 	p.name = name
-	p.done = make(chan bool, 1)
+	p.done = make(chan error, 1)
 	p.init = init
 	p.close = close
 	p.logger = logger
 }
 
-func (p *Process) Run(process func(ctx context.Context) bool) chan bool {
+func (p *Process) Run(process func(ctx context.Context) (bool, error)) chan error {
 
-	rc := make(chan bool, 1)
+	rc := make(chan error, 1)
 
 	go func() {
 		if p.init != nil {
 			p.logger.Infof("Init %s", p.name)
 			if err := p.init(p.ctx); err != nil {
 				p.logger.Errorf("Init %s failed: %v", p.name, err)
+				rc <- err
 				close(p.done)
 				close(rc)
 				return
@@ -43,7 +44,14 @@ func (p *Process) Run(process func(ctx context.Context) bool) chan bool {
 		p.logger.Infof("%s started", p.name)
 		close(rc)
 		if process != nil {
-			if process(p.ctx) {
+			finished, err := process(p.ctx)
+			if err != nil {
+				p.logger.Errorf("Process %s failed: %v", p.name, err)
+				p.done <- err
+				close(p.done)
+			}
+
+			if finished {
 				p.logger.Debugf("%s finished", p.name)
 			} else {
 				p.logger.Debugf("%s cancelled", p.name)

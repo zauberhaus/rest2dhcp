@@ -24,14 +24,14 @@ func TestBackgroundProcessFinish(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), nil, nil, logger)
 
-	p := func(ctx context.Context) bool {
-		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
+	p := func(ctx context.Context) (bool, error) {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return true
+			return true, nil
 		}, &val)
 	}
 
@@ -52,14 +52,14 @@ func TestBackgroundProcessFinishAndStop(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), nil, nil, logger)
 
-	p := func(ctx context.Context) bool {
-		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
+	p := func(ctx context.Context) (bool, error) {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return true
+			return true, nil
 		}, &val)
 	}
 
@@ -81,15 +81,15 @@ func TestBackgroundProcessCancel(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), nil, nil, logger)
 
-	p := func(ctx context.Context) bool {
+	p := func(ctx context.Context) (bool, error) {
 		close(started)
-		return exec(ctx, 75*time.Millisecond, func(p ...interface{}) bool {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return false
+			return false, nil
 		}, &val)
 	}
 
@@ -122,14 +122,14 @@ func TestBackgroundProcessInitSchutdown(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), i, s, logger)
 
-	p := func(ctx context.Context) bool {
-		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
+	p := func(ctx context.Context) (bool, error) {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return true
+			return true, nil
 		}, &val)
 	}
 
@@ -164,14 +164,14 @@ func TestBackgroundProcessInitFailed(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), i, s, logger)
 
-	p := func(ctx context.Context) bool {
-		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
+	p := func(ctx context.Context) (bool, error) {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return true
+			return true, nil
 		}, &val)
 	}
 
@@ -205,14 +205,14 @@ func TestBackgroundProcessShutdownFailed(t *testing.T) {
 	process := background.Process{}
 	process.Init(t.Name(), i, s, logger)
 
-	p := func(ctx context.Context) bool {
-		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) bool {
+	p := func(ctx context.Context) (bool, error) {
+		return exec(ctx, 10*time.Millisecond, func(p ...interface{}) (bool, error) {
 			val := p[0].(*int)
 
 			logger.Infof(tick, time.Now())
 			*val = *val + 1
 
-			return true
+			return true, nil
 		}, &val)
 	}
 
@@ -226,7 +226,7 @@ func TestBackgroundProcessShutdownFailed(t *testing.T) {
 	assert.Equal(t, 110, val)
 }
 
-func exec(ctx context.Context, timeout time.Duration, f func(...interface{}) bool, param ...interface{}) bool {
+func exec(ctx context.Context, timeout time.Duration, f func(...interface{}) (bool, error), param ...interface{}) (bool, error) {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
@@ -235,11 +235,9 @@ func exec(ctx context.Context, timeout time.Duration, f func(...interface{}) boo
 
 		select {
 		case <-ctx.Done():
-			return false
+			return false, nil
 		case <-timer.C:
-			if f(param...) {
-				return true
-			}
+			return f(param...)
 		}
 	}
 }
