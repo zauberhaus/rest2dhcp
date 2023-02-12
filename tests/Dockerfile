@@ -1,4 +1,4 @@
-FROM golang:1.17-alpine AS builder
+FROM golang:1.19.5-alpine AS builder
 
 RUN apk update && apk --no-cache upgrade && apk add --no-cache gcc musl-dev dep git ca-certificates tzdata busybox-static
 RUN go install github.com/onsi/ginkgo/ginkgo@v1.15.2
