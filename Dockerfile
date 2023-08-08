@@ -1,4 +1,4 @@
-FROM alpine as builder
+FROM alpine:3.18.3 as builder
 
 RUN apk update && apk add binutils ca-certificates && rm -rf /var/cache/apk/*
 
@@ -7,7 +7,7 @@ COPY detect.sh /
 
 RUN /detect.sh rest2dhcp
 
-FROM alpine  
+FROM alpine:3.18.3  
 
 COPY --from=builder /rest2dhcp /bin/rest2dhcp
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
